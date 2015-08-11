@@ -1,0 +1,3651 @@
+#!/usr/bin/python
+"""
+    grbl-i2g G-Code Generator
+
+    Copyright (C) <2015> Onekk
+    Source was used from the following works:
+              image-to-gcode.py   2005 Chris Radek chris@timeguy.com
+              image-to-gcode.py   2006 Jeff Epler
+              Author.py(linuxcnc) 2007 Jeff Epler  jepler@unpythonic.net
+              dmap2gcode.py       2015 Scorch
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+    To make it a menu item in Ubuntu use the Alacarte Menu Editor and add
+    the command python YourPathToThisFile/ThisFilesName.py
+    make sure you have made the file executable by right
+    clicking and selecting properties then Permissions and Execute
+
+    Version 0.01
+    - Initial code
+
+"""
+version = '0.01'
+p_name = "grbl-i2g"
+
+import sys
+VERSION = sys.version_info[0]
+
+if VERSION == 3:
+    from tkinter import *
+    from tkinter.filedialog import *
+    import tkinter.messagebox
+    MAXINT = sys.maxsize
+
+else:
+    from Tkinter import *
+    from tkFileDialog import *
+    import tkMessageBox
+    MAXINT = sys.maxint
+
+if VERSION < 3 and sys.version_info[1] < 6:
+    def next(item):
+        return item.next()
+
+from math import *
+from time import time
+import os
+import re
+import binascii
+import getopt
+import operator
+
+#Setting QUIET to True will stop almost all console messages
+QUIET = False
+STOP_CALC = 0
+
+##########
+
+class Application(Frame):
+    def __init__(self, master):
+        Frame.__init__(self, master)
+        self.w = 780
+        self.h = 490
+        frame = Frame(master, width=self.w, height=self.h)
+        self.master = master
+        self.x = -1
+        self.y = -1
+
+        self.createWidgets()
+
+
+    def createWidgets(self):
+        self.initComplete = 0
+        self.master.bind("<Configure>", self.Master_Configure)
+        self.master.bind('<Enter>', self.bindConfigure)
+        self.master.bind('<Escape>', self.KEY_ESC)
+        self.master.bind('<F1>', self.KEY_F1)
+        self.master.bind('<F2>', self.KEY_F2)
+        self.master.bind('<F3>', self.KEY_F3)
+        self.master.bind('<F4>', self.KEY_F4)
+        self.master.bind('<F5>', self.KEY_F5) #self.Recalculate_Click)
+        self.master.bind('<Control-g>', self.KEY_CTRL_G)
+
+        self.show_axis    = BooleanVar()
+        self.invert       = BooleanVar()
+        self.normalize    = BooleanVar()
+        self.cuttop       = BooleanVar()
+        self.cutperim     = BooleanVar()
+        self.disable_arcs = BooleanVar()
+        self.grbl_post    = BooleanVar()
+
+        self.origin     = StringVar()
+        self.yscale     = StringVar()
+        self.Xscale     = StringVar()
+        self.pixsize    = StringVar()
+        self.pxlsz      = StringVar()
+        self.toptol     = StringVar()
+        self.tool       = StringVar()
+        self.dia        = StringVar()
+        self.v_angle    = StringVar()
+        self.scanpat    = StringVar()
+        self.scandir    = StringVar()
+        self.r_feed     = StringVar()
+        self.f_feed     = StringVar()
+        self.p_feed     = StringVar()
+        self.stepover   = StringVar()
+        self.z_cut      = StringVar()
+        self.z_safe     = StringVar()
+
+        self.RH_TOOL     = StringVar()
+        self.RH_DIA      = StringVar()
+        self.RH_V_ANGLE  = StringVar()
+        self.RH_SCANPAT  = StringVar()
+        self.RH_SCANDIR  = StringVar()
+        self.RH_R_FEED   = StringVar()
+        self.RH_P_FEED   = StringVar()
+        self.RH_STEPOVER = StringVar()
+        self.RH_DEPTH_PP = StringVar()
+        self.RH_OFFSET   = StringVar()
+
+        self.units      = StringVar()
+        self.plungetype = StringVar()
+
+        self.lace_bound = StringVar()
+        self.cangle     = StringVar()
+        self.tolerance  = StringVar()
+        self.splitstep  = StringVar()
+
+        self.funits     = StringVar()
+
+        self.gpre       = StringVar()
+        self.gpost      = StringVar()
+
+        self.maxcut             = StringVar()
+        self.current_input_file = StringVar()
+
+        ########################################################################
+        #                         INITILIZE VARIABLES                          #
+        #  if you want to change a default setting this is the place to do it  #
+        ########################################################################
+        self.show_axis.set(1)
+        self.invert.set(0)
+        self.normalize.set(0)
+        self.cuttop.set(1)
+        self.cutperim.set(1)
+        self.disable_arcs.set(1)
+        self.grbl_post.set(1)
+
+        self.yscale.set("50.0")
+        self.Xscale.set("0")
+        self.pixsize.set("0")
+        self.toptol.set("-0.005")
+
+        self.tool.set("Flat")           # Options are "Ball", "Flat", "V"
+        self.scanpat.set("Rows")
+        self.scandir.set("Positive")    # Options are "Alternating",
+                                        #   "Positive"   , "Negative",
+                                        #   "Up Mill", "Down Mill"
+        self.v_angle.set("45")
+        self.r_feed.set("5000")
+        self.f_feed.set("1500")
+        self.p_feed.set("500")
+        self.stepover.set("0.5")
+        self.z_cut.set("-10")
+        self.z_safe.set("0.25")
+        self.dia.set("1.00")
+
+        self.RH_TOOL.set("Ball")     # Options are "Ball", "Flat", "V"
+        self.RH_V_ANGLE.set("45")
+        self.RH_R_FEED.set("5000")
+        self.RH_P_FEED.set("1500")
+        self.RH_STEPOVER.set("0.04")
+        self.RH_DEPTH_PP.set("0.10")
+        self.RH_OFFSET.set("0.02")
+        self.RH_DIA.set("3.00")
+        self.RH_SCANPAT.set("Rows")
+        self.RH_SCANDIR.set("Positive") # Options are "Alternating",
+                                           #     "Positive"   , "Negative",
+                                           #     "Up Mill", "Down Mill"
+
+
+        self.origin.set("Default")      # Options are "Default",
+                                        # "Top-Left", "Top-Center", "Top-Right",
+                                        # "Mid-Left", "Mid-Center", "Mid-Right",
+                                        # "Bot-Left", "Bot-Center", "Bot-Right"
+
+
+        self.units.set("mm")            # Options are "in" and "mm"
+        self.plungetype.set("simple")
+
+        self.lace_bound.set("None")     # Options "Full", "None", "??"
+        self.cangle.set("45.0")
+        self.tolerance.set("0.001")
+        self.splitstep.set("0")        # Options
+
+        self.NGC_FILE     = (os.path.expanduser("~")+"/None")
+        self.IMAGE_FILE   = (os.path.expanduser("~")+"/None")
+
+        self.aspect_ratio =  0
+        self.SCALE = 1
+
+        self.gcode = []
+        self.segID = []
+
+        # PAN and ZOOM STUFF
+        self.panx = 0
+        self.panx = 0
+        self.lastx = 0
+        self.lasty = 0
+
+        # Derived variables
+        if self.units.get() == 'in':
+            self.funits.set('in/min')
+        else:
+            self.units.set('mm')
+            self.funits.set('mm/min')
+
+        self.ui_TKimage = PhotoImage(format='gif',data=
+         'R0lGODdhggDpAIAAAAAAAP///ywAAAAAggDpAAAC/oyPqcvtD6OctNqLs968'
+        +'+w+G4kiW5ommCMC27uuqsgjXNjzn1833rQ5s+IbEoJGILBplyaZyWXJKn9DP'
+        +'9DqserDcrDbTDfu+FrGZR56c17b0gw2vuRnx+muesOtj+LowPreGceYWtiVG'
+        +'1jWiqMVlwriEpeJ4dJUjGWRJcVOhqTMl4RQK+ikKQfkmdWnqYHaqOslKx5ba'
+        +'xGT7B9gqG4U7a1eLlMK7sseSm3RCfGDMt7AM4qvQfPcr3Hs9TV39nIztpb3N'
+        +'nScd7R0u7kyeHXK+nq5ezG5OxQwv1z3f4S5/P26vjwM/A57ywUI3pl3Ag8HK'
+        +'ERy4ASI0ZAEDQNSw0GEE/oYAwe3LWHGjRo2DQHq0iM/ayY4JP9Z7SKUHxZb9'
+        +'aEY0KZNlG4MrUb4Eo+9cxYshywS9NlLiz5I9vS1TutToy2SkauZ8ZxPoT2FV'
+        +'rXJCePXmVj080YA1KxCnLq9f2e50mdUnMKxhdbZN23TP2bt23+LNO9dtSsH/'
+        +'MKqlRRct4XiGxwbu6xcyjkNLH0suLDeuVsBwyvKF2XOzZj+JP2euK7Yy4tKR'
+        +'QWsWjdq1Ic+mL8KOfRrVYsxFmUZ1Rbu1bNN/Q+eGRrK376jHfxNl3rgoR9bE'
+        +'lS+Hbrs5ce2YKWeX/Iok9x/fvkfv/drKdLjmcdObeB065Fhdb1vvWKqg1PV4'
+        +'/sYbV8lff/5Jh4iAAPqTnoEI3tffggkaeBmCEKrh4GQTjlLhMRdukuGGOyzo'
+        +'YXzNhJjaiCQWR9qJ7K2monqC3ALAhJAMI1whAdLgXh/yoagYhAx+KN5+Grr4'
+        +'IJA3UrhdJztyiMl5SWJYpEgF2vfkLkvONKOQP0bIGJSEUPmjeXtNaWSTDeVI'
+        +'HXAi6jfmYFh2VuJswbmZ5otxqrnbkHXaeeeXXOo5oJ/erZWNOOVluI0yiCYK'
+        +'46IpruKooJFEqtsXlMJn6aVo2qhplx522mKb8IR6ZjqkemniqUrqpSqYlbbq'
+        +'KqawlinrrE7+Z+t7m+Y6aI+8kiDmr7dWKeywNRa7/qKvyPaq7LI8EuusltBG'
+        +'y2SU1CJp7bVSZqttqcd2uyq34B747bioTmsuueWmayWu7L657rtzWigvtuLK'
+        +'G2y9ecaob7W79vsnvwBv++/AW+p7cL0J43slwPn2+zDCC7MbscITU9wwxBlL'
+        +'7O7Aw8Xr8cXpimwuyeOaDG7F7wYZMssOH8kxzCu/qjHNFstZM5kMS4oxiyM/'
+        +'ejJZJbOacqrXGnq0JrXC2qTMrernNKlsBuop0/UFXLWqU2NNXq5b75u1il/v'
+        +'Se+pY5Pd3YlniwqyglcTvHEaa6vb7IVzw1u321HjjW4jb9PacaZ7e1swFHfb'
+        +'GzekS4eLMrB/P1u44otLV3svjYNTHrnlk8dKp+GXr5l3fi7rmvgimydbuemN'
+        +'Mx645qlD3vcjpTMb+gyzE/k6jrXT1zrvZXue+6E6Zv5y7C137jHcyS/PfPPO'
+        +'Pw999NJPT3311gdRAAA7')
+        self.im  = self.ui_TKimage
+        self.wim = self.ui_TKimage.width()
+        self.him = self.ui_TKimage.height()
+        self.aspect_ratio =  float(self.wim-1) / float(self.him-1)
+
+        ########################################################################
+        #                         G-Code Default Preamble                      #
+        ########################################################################
+        # G17       ; sets XY plane                                            #
+        # G90       ; Fixed cycle, simple cycle, for roughing (Z-axis emphasis)#
+        # G64       ; G64 without P option keeps the best speed possible, no   #
+        #             matter how far away from the programmed point you end up.#
+        #             (GRBL users do not use)                                  #
+        # M3 S3000  ; Spindle start at 3000                                    #
+        # M7        ; Turn mist coolant on                                     #
+        ########################################################################
+
+        self.gpre.set("G17 G90 M3 S3000 M7")
+
+        ########################################################################
+        #                        G-Code Default Postamble                      #
+        ########################################################################
+        # M5 ; Stop Spindle                                                    #
+        # M9 ; Turn all coolant off                                            #
+        # M2 ; End Program                                                     #
+        ########################################################################
+
+        self.gpost.set("M5 M9 M2")
+
+        self.statusMessage = StringVar()
+        self.statusMessage.set("Welcome to " + p_name)
+        
+        ########################################################################
+        ###                     END INITILIZING VARIABLES                    ###
+        ########################################################################
+
+        # make a Status Bar
+        self.statusbar = Label(self.master, textvariable=self.statusMessage, \
+                                   bd=1, relief=SUNKEN , height=1)
+        self.statusbar.pack(anchor=SW, fill=X, side=BOTTOM)
+
+
+        # Buttons
+        self.Save_Button = Button(self.master, text="Save G-Code",
+                                  command=self.menu_File_Save_G_Code_File_Finish)
+        self.Roughing_but = Button(self.master, text="Open Roughing Settings",
+                                   command=self.RH_Settings_Window)
+
+        # Canvas
+        lbframe = Frame(self.master)
+        self.PreviewCanvas_frame = lbframe
+        self.PreviewCanvas = Canvas(lbframe, width=self.w-525,
+                                    height=self.h-200, background="grey")
+        self.PreviewCanvas.pack(side=LEFT, fill=BOTH, expand=1)
+        self.PreviewCanvas_frame.place(x=230, y=10)
+
+        self.PreviewCanvas.bind("<1>", self.mousePanStart)
+        self.PreviewCanvas.bind("<B1-Motion>", self.mousePan)
+        self.PreviewCanvas.bind("<2>", self.mousePanStart)
+        self.PreviewCanvas.bind("<B2-Motion>", self.mousePan)
+        self.PreviewCanvas.bind("<3>", self.mousePanStart)
+        self.PreviewCanvas.bind("<B3-Motion>", self.mousePan)
+
+        # Left Column #
+        self.Ll_font_prop = Label(self.master, text="Image Size:", anchor=W)
+
+        self.Ll_Yscale = Label(self.master, text="Image Height",
+                                  anchor=CENTER)
+        self.Ll_Yscale_u = Label(self.master, textvariable=self.units,
+                                    anchor=W)
+        self.Ey_Yscale = Entry(self.master, width="15")
+        self.Ey_Yscale.configure(textvariable=self.yscale)
+        self.Ey_Yscale.bind('<Return>', self.Recalculate_Click)
+        self.yscale.trace_variable("w", self.Ey_Yscale_Callback)
+        self.NormalColor =  self.Ey_Yscale.cget('bg')
+
+        self.Ll_Yscale2 = Label(self.master, text="Image Width",
+                                   anchor=CENTER)
+        self.Ll_Yscale2_u = Label(self.master, textvariable=self.units,
+                                     anchor=W)
+        self.Ll_Yscale2_val = Label(self.master, textvariable=self.Xscale,
+                                        anchor=W)
+
+        self.Ll_PixSize = Label(self.master, text="Pixel Size", anchor=CENTER)
+        self.Ll_PixSize_u = Label(self.master, textvariable=self.units,
+                                      anchor=W)
+        self.Ll_PixSize_val = Label(self.master, textvariable=self.pixsize,
+                                        anchor=W)
+
+        self.Ll_pos_orient = Label(self.master, text="Image Properties:",
+                                          anchor=W)
+
+
+        self.Ll_Origin      = Label(self.master,text="Origin", anchor=CENTER)
+        self.Origin_OptionMenu = OptionMenu(root,
+                                            self.origin,
+                                            "Top-Left",
+                                            "Top-Center",
+                                            "Top-Right",
+                                            "Mid-Left",
+                                            "Mid-Center",
+                                            "Mid-Right",
+                                            "Bot-Left",
+                                            "Bot-Center",
+                                            "Bot-Right",
+                                            "Default",
+                                            command=self.Recalculate_RQD_Click)
+
+        #Radio Button
+        self.Ll_Invert_Color_FALSE = Label(self.master,text="Depth Color")
+        self.Radio_Invert_Color_FALSE = Radiobutton(self.master,text="Black",
+                                         value=False, width="100", anchor=W)
+        self.Radio_Invert_Color_FALSE.configure(variable=self.invert )
+        #self.Ll_Invert_Color_TRUE = Label(self.master,text=" ")
+        self.Radio_Invert_Color_TRUE = Radiobutton(self.master,text="White",
+                                         value=True, width="100", anchor=W)
+        self.Radio_Invert_Color_TRUE.configure(variable=self.invert )
+
+
+        self.Ll_normalize = Label(self.master,text="Normalize Depth")
+        self.Checkbutton_normalize = Checkbutton(self.master,text=" ", anchor=W)
+        self.Checkbutton_normalize.configure(variable=self.normalize)
+
+        self.separator1 = Frame(self.master, height=2, bd=1, relief=SUNKEN)
+        self.separator2 = Frame(self.master, height=2, bd=1, relief=SUNKEN)
+        self.separator3 = Frame(self.master, height=2, bd=1, relief=SUNKEN)
+        self.separator4 = Frame(self.master, height=2, bd=1, relief=SUNKEN)
+
+        self.Ll_CutTop = Label(self.master,text="Cut Top Surface")
+        self.Checkbutton_CutTop = Checkbutton(self.master,text=" ",
+                                              anchor=W, command=self.Set_Input_States)
+        self.Checkbutton_CutTop.configure(variable=self.cuttop)
+
+        self.Ll_Toptol = Label(self.master,text="Top Tolerance", anchor=CENTER )
+        self.Ll_Toptol_u = Label(self.master,textvariable=self.units, anchor=W)
+        self.Ey_Toptol = Entry(self.master,width="15")
+        self.Ey_Toptol.configure(textvariable=self.toptol)
+        self.toptol.trace_variable("w", self.Ey_Toptol_Callback)
+
+        # End Left Column #
+
+        # Right Column #
+
+        self.Ll_tool_opt = Label(self.master,text="Tool Properties:", anchor=W)
+
+        self.Ll_ToolDIA = Label(self.master,text="Tool DIA")
+        self.Ll_ToolDIA_u = Label(self.master,textvariable=self.units, anchor=W)
+        self.Ey_ToolDIA = Entry(self.master,width="15")
+        self.Ey_ToolDIA.configure(textvariable=self.dia)
+        self.Ey_ToolDIA.bind('<Return>', self.Recalculate_Click)
+        self.dia.trace_variable("w", self.Ey_ToolDIA_Callback)
+
+        self.Ll_Tool      = Label(self.master,text="Tool End", anchor=CENTER)
+        self.Tool_OptionMenu = OptionMenu(root, self.tool, "Ball","V","Flat",\
+                                               command=self.Set_Input_States_Event)
+
+        self.Ll_Vangle = Label(self.master,text="V-Bit Angle", anchor=CENTER)
+        self.Ey_Vangle = Entry(self.master,width="15")
+        self.Ey_Vangle.configure(textvariable=self.v_angle)
+        self.Ey_Vangle.bind('<Return>', self.Recalculate_Click)
+        self.v_angle.trace_variable("w", self.Ey_Vangle_Callback)
+
+        self.Ll_gcode_opt = Label(self.master,text="Gcode Properties:",
+                                     anchor=W)
+
+        self.Ll_Scanpat = Label(self.master,text="Scan Pattern", anchor=CENTER)
+        self.ScanPat_OptionMenu = OptionMenu(root, self.scanpat, "Rows","Columns",
+                                            "R then C", "C then R")
+
+        self.Ll_CutPerim = Label(self.master,text="Cut Perimeter")
+        self.Checkbutton_CutPerim = Checkbutton(self.master,text=" ",
+                                              anchor=W,
+                                              command=self.Set_Input_States)
+        self.Checkbutton_CutPerim.configure(variable=self.cutperim)
+
+        self.Ll_Scandir = Label(self.master,text="Scan Direction", anchor=CENTER)
+        self.ScanDir_OptionMenu = OptionMenu(root, self.scandir, "Alternating",
+                                             "Positive", "Negative", "Up Mill",
+                                             "Down Mill")
+
+        self.Ll_r_feed = Label(self.master,text="Rapid Feed", anchor=CENTER)
+        self.Ll_r_feed_u = Label(self.master,textvariable=self.funits, anchor=W)
+        self.Ey_r_feed = Entry(self.master,width="15")
+        self.Ey_r_feed.configure(textvariable=self.r_feed)
+        self.Ey_r_feed.bind('<Return>', self.Recalculate_Click)
+        self.r_feed.trace_variable("w", self.Ey_r_feed_Callback)
+
+        self.Ll_Feed = Label(self.master,text="Feed Rate")
+        self.Ll_Feed_u = Label(self.master,textvariable=self.funits, anchor=W)
+        self.Ey_Feed = Entry(self.master,width="15")
+        self.Ey_Feed.configure(textvariable=self.f_feed)
+        self.Ey_Feed.bind('<Return>', self.Recalculate_Click)
+        self.f_feed.trace_variable("w", self.Ey_Feed_Callback)
+
+        self.Ll_p_feed = Label(self.master,text="Plunge Feed", anchor=CENTER)
+        self.Ll_p_feed_u = Label(self.master,textvariable=self.funits, anchor=W)
+        self.Ey_p_feed = Entry(self.master,width="15")
+        self.Ey_p_feed.configure(textvariable=self.p_feed)
+        self.Ey_p_feed.bind('<Return>', self.Recalculate_Click)
+        self.p_feed.trace_variable("w", self.Ey_p_feed_Callback)
+
+        self.Ll_StepOver = Label(self.master,text="Stepover", anchor=CENTER)
+        self.Ll_StepOver_u = Label(self.master,textvariable=self.units, anchor=W)
+        self.Ey_StepOver = Entry(self.master,width="15")
+        self.Ey_StepOver.configure(textvariable=self.stepover)
+        self.Ey_StepOver.bind('<Return>', self.Recalculate_Click)
+        self.stepover.trace_variable("w", self.Ey_StepOver_Callback)
+
+        self.Ll_Zsafe = Label(self.master,text="Z Safe")
+        self.Ll_Zsafe_u = Label(self.master,textvariable=self.units, anchor=W)
+        self.Ey_Zsafe = Entry(self.master,width="15")
+        self.Ey_Zsafe.configure(textvariable=self.z_safe)
+        self.Ey_Zsafe.bind('<Return>', self.Recalculate_Click)
+        self.z_safe.trace_variable("w", self.Ey_Zsafe_Callback)
+
+        self.Ll_Zcut = Label(self.master,text="Max Cut Depth")
+        self.Ll_Zcut_u = Label(self.master,textvariable=self.units, anchor=W)
+        self.Ey_Zcut = Entry(self.master,width="15")
+        self.Ey_Zcut.configure(textvariable=self.z_cut)
+        self.Ey_Zcut.bind('<Return>', self.Recalculate_Click)
+        self.z_cut.trace_variable("w", self.Ey_Zcut_Callback)
+
+        # End Right Column #
+
+        #GEN Setting Window Entry initializations
+
+        self.Ey_Sspeed=Entry()
+        self.Ey_BoxGap = Entry()
+        self.Ey_ContAngle = Entry()
+        self.Ey_Tolerance = Entry()
+
+        #ROUGH Setting Window Entry initializations
+
+        self.RH_Ey_ToolDIA=Entry()
+        self.RH_Ey_Vangle=Entry()
+        self.RH_Ey_Feed=Entry()
+        self.RH_Ey_p_feed=Entry()
+        self.RH_Ey_StepOver=Entry()
+        self.RH_Ey_Roffset=Entry()
+        self.RH_Ey_Rdepth=Entry()
+
+        # Make Menu Bar
+
+        self.menuBar = Menu(self.master, relief = "raised", bd=2)
+
+        top_File = Menu(self.menuBar, tearoff=0)
+        top_File.add("command", label = "Open G-Code File", \
+                         command = self.menu_File_Open_G_Code_File)
+
+        top_File.add("command", label = "Open Image File", \
+                             command = self.menu_File_Open_IMAGE_File)
+
+        top_File.add("command", label = "Save G-Code File", \
+                         command = self.menu_File_Save_G_Code_File_Finish)
+        top_File.add("command", label = "Save Roughing G-Code File", \
+                         command = self.menu_File_Save_G_Code_File_Rough)
+        top_File.add("command", label = "Exit", command = self.menu_File_Quit)
+        self.menuBar.add("cascade", label="File", menu=top_File)
+
+        top_Edit = Menu(self.menuBar, tearoff=0)
+        top_Edit.add("command", label = "Copy G-Code Data to Clipboard", \
+                         command = self.CopyClipboard_GCode)
+        self.menuBar.add("cascade", label="Edit", menu=top_Edit)
+
+        top_View = Menu(self.menuBar, tearoff=0)
+        top_View.add("command", label = "Refresh", command = self.menu_View_Refresh)
+
+        top_View.add_separator()
+
+        top_View.add_checkbutton(label = "Show Origin Axis",  variable=self.show_axis , \
+                                     command= self.menu_View_Refresh)
+
+        self.menuBar.add("cascade", label="View", menu=top_View)
+
+        top_Settings = Menu(self.menuBar, tearoff=0)
+        top_Settings.add("command", label = "General Settings", \
+                             command = self.GEN_Settings_Window)
+        top_Settings.add("command", label = "Roughing Settings", \
+                             command = self.RH_Settings_Window)
+        top_Settings.add("command", label = "Save Settings", \
+                             command = self.Write_Config)
+
+        self.menuBar.add("cascade", label="Settings", menu=top_Settings)
+
+        top_Help = Menu(self.menuBar, tearoff=0)
+        top_Help.add("command", label = "About", command = self.menu_Help_About)
+        self.menuBar.add("cascade", label="Help", menu=top_Help)
+
+        self.master.config(menu=self.menuBar)
+
+        ########################################################################
+        #                  Config File and command line options                #
+        ########################################################################
+
+        config_file = p_name + ".ngc"
+        home_config1 = os.path.expanduser("~") + "/" + config_file
+        config_file2 = "." + p_name + "rc"
+        home_config2 = os.path.expanduser("~") + "/" + config_file2
+        if ( os.path.isfile(config_file) ):
+            self.Open_G_Code_File(config_file)
+        elif ( os.path.isfile(home_config1) ):
+            self.Open_G_Code_File(home_config1)
+        elif ( os.path.isfile(home_config2) ):
+            self.Open_G_Code_File(home_config2)
+
+        opts, args = None, None
+        try:
+            opts, args = getopt.getopt(sys.argv[1:], "hg:",["help", "gcode_file"])
+        except:
+            fmessage('Unable interpret command line options')
+            sys.exit()
+        for option, value in opts:
+            if option in ('-h','--help'):
+                fmessage(' ')
+                fmessage('Usage: python ' + p_name + '.py [-g file]')
+                fmessage('-g    : ' + p_name + ' gcode output file to read (also --gcode_file)')
+                fmessage('-h    : print this help (also --help)\n')
+                sys.exit()
+            if option in ('-g','--gcode_file'):
+                    self.Open_G_Code_File(value)
+
+##################################
+
+    def entry_set(self, val2, calc_flag=0, new=0):
+        if calc_flag == 0 and new==0:
+            try:
+                self.statusbar.configure( bg = 'yellow' )
+                val2.configure( bg = 'yellow' )
+                self.statusMessage.set(" Recalculation required.")
+            except:
+                pass
+        elif calc_flag == 3:
+            try:
+                val2.configure( bg = 'red' )
+                self.statusbar.configure( bg = 'red' )
+                self.statusMessage.set(" Value should be a number. ")
+            except:
+                pass
+        elif calc_flag == 2:
+            try:
+                self.statusbar.configure( bg = 'red' )
+                val2.configure( bg = 'red' )
+            except:
+                pass
+        elif (calc_flag == 0 or calc_flag == 1) and new==1 :
+            try:
+                self.statusbar.configure( bg = 'white' )
+                self.statusMessage.set(" ")
+                val2.configure( bg = 'white' )
+            except:
+                pass
+        elif (calc_flag == 1) and new==0 :
+            try:
+                self.statusbar.configure( bg = 'white' )
+                self.statusMessage.set(" ")
+                val2.configure( bg = 'white' )
+            except:
+                pass
+
+        elif (calc_flag == 0 or calc_flag == 1) and new==2:
+            return 0
+        return 1
+
+    def Create_Header(self):
+        header = []
+        header.append('(Code generated by ' + p_name + ' ' + version+'.py )')
+        header.append('(by Onekk 2015)')
+        header.append('(Settings used when this file was created)')
+        header.append("(=========================================================)")
+        # BOOL
+        header.append('(config_set show_axis  %s )' %( int(self.show_axis.get())  ))
+        header.append('(config_set invert     %s )' %( int(self.invert.get())     ))
+        header.append('(config_set normalize  %s )' %( int(self.normalize.get())  ))
+        header.append('(config_set cuttop     %s )' %( int(self.cuttop.get())     ))
+        header.append('(config_set cutperim   %s )' %( int(self.cutperim.get())     ))
+        header.append('(config_set disable_arcs %s )' %( int(self.disable_arcs.get()) ))
+        header.append('(config_set grbl_post   %s )' %( int(self.grbl_post.get()) ))
+
+        # STRING.get()
+        header.append('(config_set yscale     %s )'  %( self.yscale.get()         ))
+        header.append('(config_set toptol     %s )'  %( self.toptol.get()         ))
+        header.append('(config_set vangle     %s )'  %( self.v_angle.get()        ))
+        header.append('(config_set stepover   %s )'  %( self.stepover.get()       ))
+        header.append('(config_set plfeed     %s )'  %( self.p_feed.get()         ))
+        header.append('(config_set z_safe     %s )'  %( self.z_safe.get()        ))
+        header.append('(config_set z_cut      %s )'  %( self.z_cut.get()         ))
+        header.append('(config_set diatool    %s )'  %( self.dia.get()            ))
+        header.append('(config_set origin     %s )'  %( self.origin.get()         ))
+        header.append('(config_set tool       %s )'  %( self.tool.get()           ))
+        header.append('(config_set units      %s )'  %( self.units.get()          ))
+        header.append('(config_set plunge     %s )'  %( self.plungetype.get()     ))
+        header.append('(config_set r_feed     %s )'  %( self.r_feed.get()         ))
+        header.append('(config_set feed       %s )'  %( self.f_feed.get()         ))
+        header.append('(config_set lace       %s )'  %( self.lace_bound.get()     ))
+        header.append('(config_set cangle     %s )'  %( self.cangle.get()         ))
+        header.append('(config_set tolerance  %s )'  %( self.tolerance.get()      ))
+        header.append('(config_set splitstep  %s )'  %( self.splitstep.get()      ))
+        header.append('(config_set gpre       \042%s\042 )' %( self.gpre.get()    ))
+        header.append('(config_set gpost      \042%s\042 )' %( self.gpost.get()   ))
+        header.append('(config_set scanpat    \042%s\042 )' %( self.scanpat.get() ))
+        header.append('(config_set scandir    \042%s\042 )' %( self.scandir.get() ))
+        header.append('(config_set imagefile  \042%s\042 )' %( self.IMAGE_FILE    ))
+
+        header.append('(config_set RH_TOOL     %s )'  %( self.RH_TOOL.get()    ))
+        header.append('(config_set RH_DIA      %s )'  %( self.RH_DIA.get()     ))
+        header.append('(config_set RH_V_ANGLE  %s )'  %( self.RH_V_ANGLE.get() ))
+        header.append('(config_set RH_R_FEED   %s )'  %( self.RH_R_FEED.get()  ))
+        header.append('(config_set RH_P_FEED   %s )'  %( self.RH_P_FEED.get()  ))
+        header.append('(config_set RH_STEPOVER %s )'  %( self.RH_STEPOVER.get()))
+        header.append('(config_set RH_DEPTH_PP %s )'  %( self.RH_DEPTH_PP.get()))
+        header.append('(config_set RH_OFFSET   %s )'  %( self.RH_OFFSET.get()  ))
+        header.append('(config_set RH_SCANPAT  \042%s\042 )' %( self.RH_SCANPAT.get() ))
+        header.append('(config_set RH_SCANDIR  \042%s\042 )' %( self.RH_SCANDIR.get() ))
+
+        header.append("(=========================================================)")
+
+        return header
+
+
+    def Write_Config(self):
+        ## for now unix only
+        config_file = p_name +  ".ngc"
+        home_config1 = os.path.expanduser("~") + "/" + config_file
+        filename = home_config1
+
+        try:
+            fout = open(filename,'w')
+        except:
+            self.statusMessage.set("Unable to open file for writing: %s" %(filename))
+            self.statusbar.configure( bg = 'red' )
+            return
+
+
+        header = self.Create_Header()
+
+        for line in header:
+            try:
+                fout.write(line+'\n')
+            except:
+                fmessage("skipping line:" + line + "; may be due to non ASCII character.");
+                pass
+        fout.close
+
+
+    def WriteGCode(self,rh_flag = 0):
+        global Zero
+        header = self.Create_Header()
+        header.append(self.gpre.get())
+
+        postscript = self.gpost.get()
+
+        pil_format = False
+        try:
+            test = self.im.width()
+        except:
+            try:
+                test = self.im.size
+                pil_format = True
+            except:
+                self.statusMessage.set("No Image Loaded")
+                self.statusbar.configure( bg = 'red' )
+                return
+
+        MAT = Image_Matrix_Numpy()
+        MAT.FromImage(self.im,pil_format)
+
+        image_h       =  float(self.yscale.get())
+        pixel_size    =  image_h / ( float(MAT.width) - 1.0 )
+        image_w       =  pixel_size * ( float(MAT.height) - 1.0 )
+        tolerance     =  float(self.tolerance.get())
+        safe_z        =  float(self.z_safe.get())
+        splitstep     =  float(self.splitstep.get())
+        toptol        =  float(self.toptol.get())
+        depth         = -float(self.z_cut.get())
+        Cont_Angle    =  float(self.cangle.get())
+        cutperim      =  int(self.cutperim.get())
+        rapid_feed    =  float(self.r_feed.get())
+        grbl_post     =  int(self.grbl_post.get())
+
+        if rh_flag == 0:
+
+            tool_type     =  self.tool.get()
+
+            tool_diameter =  float(self.dia.get())
+            rh_depth   =  0.0
+            rh_offset  =  0.0
+            feed_rate     =  float(self.f_feed.get())
+            rh_feed    =  float(self.RH_R_FEED.get())
+            plunge_feed   =  float(self.p_feed.get())
+            step          =  max(1, int(floor( float(self.stepover.get()) / pixel_size)))
+
+            edge_offset   = 0
+
+            if self.tool.get() == "Flat":
+                TOOL = make_tool_shape(endmill, tool_diameter, pixel_size)
+            elif self.tool.get() == "V":
+                v_angle = float(self.v_angle.get())
+                TOOL = make_tool_shape(vee_common(v_angle), tool_diameter, pixel_size)
+            else: #"Ball"
+                TOOL = make_tool_shape(ball_tool, tool_diameter, pixel_size)
+
+            rows = 0
+            columns = 0
+            columns_first = 0
+            if self.scanpat.get() != "Columns":
+                rows = 1
+            if self.scanpat.get() != "Rows":
+                columns = 1
+            if self.scanpat.get() == "C then R":
+                columns_first = 1
+
+            converter = self.scandir.get()
+            lace_bound_val = self.lace_bound.get()
+            ### END FINISH CUT STUFF ###
+        else:
+            tool_type     =  self.RH_TOOL.get()
+
+            rh_depth   =  float(self.RH_DEPTH_PP.get())
+            rh_offset  =  float(self.RH_OFFSET.get())
+            tool_diameter =  float(self.RH_DIA.get())
+            finish_dia    =  float(self.dia.get())
+
+            feed_rate     =  float(self.RH_R_FEED.get())
+            rh_feed    =  float(self.RH_R_FEED.get())
+            plunge_feed   =  float(self.RH_P_FEED.get())
+            step          =  max(1, int(floor( float(self.RH_STEPOVER.get()) / pixel_size)))
+
+            edge_offset = max(0, (tool_diameter - finish_dia)/2.0)
+
+            if self.RH_TOOL.get() == "Flat":
+                TOOL = make_tool_shape(endmill, tool_diameter, pixel_size, rh_offset)
+            elif self.tool.get() == "V":
+                v_angle = float(self.RH_V_ANGLE.get())
+                TOOL = make_tool_shape(vee_common(v_angle), tool_diameter, pixel_size, rh_offset)
+            else: #"Ball"
+                TOOL = make_tool_shape(ball_tool, tool_diameter, pixel_size, rh_offset)
+
+            rows = 0
+            columns = 0
+            columns_first = 0
+            if self.RH_SCANPAT.get() != "Columns":
+                rows = 1
+            if self.RH_SCANPAT.get() != "Rows":
+                columns = 1
+            if self.RH_SCANPAT.get() == "C then R":
+                columns_first = 1
+
+            converter = self.RH_SCANDIR.get()
+            lace_bound_val = self.lace_bound.get()
+
+        ### END ROUGHING STUFF ###
+
+
+        if converter == "Positive":
+            conv_index = 0
+            #fmessage("Positive")
+
+        elif converter == "Negative":
+            conv_index = 1
+            #fmessage("Negative")
+
+        elif converter == "Alternating":
+            conv_index = 2
+            #fmessage("Alternating")
+
+        elif converter == "Up Mill":
+            conv_index = 3
+            #fmessage("Up Milling")
+
+        elif converter == "Down Mill":
+            conv_index = 4
+            #fmessage("Down Mill")
+        else:
+            conv_index = 2
+            fmessage("Converter Error: Setting to, Alternating")
+
+        if rows:
+            convert_rows = convert_makers[conv_index]()
+        else:
+            convert_rows = None
+
+        if columns:
+            convert_cols = convert_makers[conv_index]()
+        else:
+            convert_cols = None
+
+        if lace_bound_val != "None" and rows and columns:
+
+            slope = tan( Cont_Angle*pi/180 )
+            if columns_first:
+                convert_rows = Reduce_Scan_Lace(convert_rows, slope, step+1)
+            else:
+                convert_cols = Reduce_Scan_Lace(convert_cols, slope, step+1)
+            if lace_bound_val == "Full":
+                if columns_first:
+                    convert_cols = Reduce_Scan_Lace(convert_cols, slope, step+1)
+                else:
+                    convert_rows = Reduce_Scan_Lace(convert_rows, slope, step+1)
+
+        ########################################################################
+        #              START COMMON STUFF                                      #
+        ########################################################################
+
+        if self.units.get() == "in":
+            units = 'G20'
+        else:
+            units = 'G21'
+
+        if self.cuttop.get() != True:
+            if rows == 1:
+                convert_rows = Reduce_Scan_Lace_new(convert_rows, toptol, 1)
+            if columns == 1:
+                convert_cols = Reduce_Scan_Lace_new(convert_cols, toptol, 1)
+
+        disable_arcs = self.disable_arcs.get()
+
+        if self.plungetype.get() == "arc" and (not disable_arcs):
+            E_cut   = ArcEntryCut(plunge_feed, .125)
+        else:
+            E_cut   = SimpleEntryCut(plunge_feed)
+
+        if self.normalize.get():
+            pass
+            a = MAT.min()
+            b = MAT.max()
+            if a != b:
+                MAT.minus(a)
+                MAT.mult(1./(b-a))
+        else:
+            MAT.mult(1/255.0)
+
+        xoffset = 0
+        yoffset = 0
+
+        MAT.mult(depth)
+
+        ##########################################
+        #         ORIGIN LOCATING STUFF          #
+        ##########################################
+        minx = 0
+        maxx = image_w
+        miny = 0
+        maxy = image_h
+        midx = (minx + maxx)/2
+        midy = (miny + maxy)/2
+
+        CASE = str(self.origin.get())
+        if     CASE == "Top-Left":
+            x_zero = minx
+            y_zero = maxy
+        elif   CASE == "Top-Center":
+            x_zero = midx
+            y_zero = maxy
+        elif   CASE == "Top-Right":
+            x_zero = maxx
+            y_zero = maxy
+        elif   CASE == "Mid-Left":
+            x_zero = minx
+            y_zero = midy
+        elif   CASE == "Mid-Center":
+            x_zero = midx
+            y_zero = midy
+        elif   CASE == "Mid-Right":
+            x_zero = maxx
+            y_zero = midy
+        elif   CASE == "Bot-Left":
+            x_zero = minx
+            y_zero = miny
+        elif   CASE == "Bot-Center":
+            x_zero = midx
+            y_zero = miny
+        elif   CASE == "Bot-Right":
+            x_zero = maxx
+            y_zero = miny
+        elif   CASE == "Arc-Center":
+            x_zero = 0
+            y_zero = 0
+        else:          #"Default"
+            x_zero = 0
+            y_zero = 0
+
+        xoffset = xoffset - x_zero
+        yoffset = yoffset - y_zero
+
+        if self.invert.get():
+            MAT.mult(-1.0)
+        else:
+            MAT.minus(depth)
+
+        self.gcode = []
+
+        MAT.pad_w_zeros(TOOL)
+
+        cut_feed = feed_rate
+
+        START_TIME=time()
+        self.gcode = convert(self,          \
+                             MAT,           \
+                             units,         \
+                             TOOL,          \
+                             pixel_size,    \
+                             step,          \
+                             safe_z,        \
+                             tolerance,     \
+                             feed_rate,     \
+                             convert_rows,  \
+                             convert_cols,  \
+                             columns_first, \
+                             cutperim,      \
+                             E_cut,     \
+                             rh_depth,   \
+                             rh_feed,    \
+                             xoffset,       \
+                             yoffset,       \
+                             splitstep,     \
+                             header,        \
+                             postscript,    \
+                             edge_offset,   \
+                             disable_arcs,  \
+                             rapid_feed,    \
+                             cut_feed,      \
+                             plunge_feed,   \
+                             grbl_post)
+
+
+    def CopyClipboard_GCode(self):
+        self.clipboard_clear()
+        if (self.Check_All_Variables() > 0):
+            return
+        self.WriteGCode()
+        for line in self.gcode:
+            self.clipboard_append(line+'\n')
+        self.statusMessage.set("G-Code Sent to Clipboard")
+
+    def CopyClipboard_SVG(self):
+        self.clipboard_clear()
+        self.WriteSVG()
+        for line in self.svgcode:
+            self.clipboard_append(line+'\n')
+
+    def Quit_Click(self, event):
+        self.statusMessage.set("Exiting!")
+        root.destroy()
+
+    def mousePanStart(self,event):
+        self.panx = event.x
+        self.pany = event.y
+
+    def mousePan(self,event):
+        all = self.PreviewCanvas.find_all()
+        dx = event.x-self.panx
+        dy = event.y-self.pany
+        for i in all:
+            self.PreviewCanvas.move(i, dx, dy)
+        self.lastx = self.lastx + dx
+        self.lasty = self.lasty + dy
+        self.panx = event.x
+        self.pany = event.y
+
+    def Recalculate_Click(self, event):
+        pass
+
+    def Settings_ReLoad_Click(self, event):
+        win_id=self.grab_current()
+
+    def Close_Current_Window_Click(self):
+        win_id=self.grab_current()
+        win_id.destroy()
+
+    def Stop_Click(self, event):
+        global STOP_CALC
+        STOP_CALC=1
+
+    # Left Column #
+
+    def Ey_Yscale_Check(self):
+        try:
+            value = float(self.yscale.get())
+            if  value <= 0.0:
+                self.statusMessage.set(" Height should be greater than 0 ")
+                return 2 # Value is invalid number
+            else:
+                self.Xscale.set("%.3f" %( self.aspect_ratio * float(self.yscale.get())) )
+                self.pixsize.set("%.3f" %( float(self.yscale.get()) / (self.him - 1.0) ) )
+        except:
+            return 3     # Value not a number
+        return 0         # Value is a valid number
+    def Ey_Yscale_Callback(self, varName, index, mode):
+        self.entry_set(self.Ey_Yscale, self.Ey_Yscale_Check(), new=1)
+
+    def Ey_Toptol_Check(self):
+        try:
+            value = float(self.toptol.get())
+            if  value > 0.0:
+                self.statusMessage.set(" Tolerance should be less than or equal to 0 ")
+                return 2 # Value is invalid number
+        except:
+            return 3     # Value not a number
+        return 0         # Value is a valid number
+
+    def Ey_Toptol_Callback(self, varName, index, mode):
+        self.entry_set(self.Ey_Toptol, self.Ey_Toptol_Check(), new=1)
+    #############################
+    # End Left Column #
+    #############################
+
+    #############################
+    # Start Right Column #
+    #############################
+
+    def Ey_ToolDIA_Check(self):
+        try:
+            value = float(self.dia.get())
+            if  value <= 0.0:
+                self.statusMessage.set(" Diameter should be greater than 0 ")
+                return 2 # Value is invalid number
+        except:
+            return 3     # Value not a number
+
+        self.stepover.set(value/2)     # preset a consistent value
+        self.RH_OFFSET.set(value/2) # preset a consistent valule on the
+                                       # roughing offset to avoid a finish endmill
+                                       # damage
+        return 0         # Value is a valid number
+    def Ey_ToolDIA_Callback(self, varName, index, mode):
+        self.entry_set(self.Ey_ToolDIA, self.Ey_ToolDIA_Check(), new=1)
+
+    def Ey_Vangle_Check(self):
+        try:
+            value = float(self.v_angle.get())
+            if  value <= 0 or value >= 180:
+                self.statusMessage.set(" Angle should be between 0 and 180")
+                return 2 # Value is invalid number
+        except:
+            return 3     # Value not a number
+        return 0         # Value is a valid number
+    def Ey_Vangle_Callback(self, varName, index, mode):
+        self.entry_set(self.Ey_Vangle, self.Ey_Vangle_Check(), new=1)
+
+    def Ey_Feed_Check(self):
+        try:
+            value = float(self.f_feed.get())
+            if  value <= 0.0:
+                self.statusMessage.set(" Feed should be greater than 0 ")
+                return 2 # Value is invalid number
+        except:
+            return 3     # Value not a number
+        return 1         # Value is a valid number changes do not require recalc
+    def Ey_Feed_Callback(self, varName, index, mode):
+        self.entry_set(self.Ey_Feed,self.Ey_Feed_Check(), new=1)
+
+    def Ey_p_feed_Check(self):
+        try:
+            value = float(self.p_feed.get())
+            if  value <= 0.0:
+                self.statusMessage.set(" Feed should be greater than 0 ")
+                return 2 # Value is invalid number
+        except:
+            return 3     # Value not a number
+        return 0         # Value is a valid number
+    def Ey_p_feed_Callback(self, varName, index, mode):
+        self.entry_set(self.Ey_p_feed, self.Ey_p_feed_Check(), new=1)
+
+    def Ey_r_feed_Check(self):
+        try:
+            value = float(self.r_feed.get())
+            nvalue = float(self.f_feed.get())
+            if  value <= 0.0:
+                self.statusMessage.set(" Rapid Feed should be greater than 0 ")
+                return 2 # Value is invalid number
+            elif value < nvalue:
+                self.statusMessage.set(" Rapid Feed should be greater than Cutting Feed")
+                return 2 # Value is invalid number
+        except:
+            return 3     # Value not a number
+        return 0         # Value is a valid number
+    def Ey_r_feed_Callback(self, varName, index, mode):
+        self.entry_set(self.Ey_r_feed, self.Ey_r_feed_Check(), new=1)
+
+    def Ey_StepOver_Check(self):
+        try:
+            value = float(self.stepover.get())
+            if  value <= 0.0:
+                self.statusMessage.set(" Stepover should be greater than 0 ")
+                return 2 # Value is invalid number
+        except:
+            return 3     # Value not a number
+        return 0         # Value is a valid number
+
+    def Ey_StepOver_Callback(self, varName, index, mode):
+        self.entry_set(self.Ey_StepOver, self.Ey_StepOver_Check(), new=1)
+
+    def Ey_Zsafe_Check(self):
+        try:
+            value = float(self.z_safe.get())
+            if  value <= 0.0:
+                self.statusMessage.set(" Z safe should be greater than 0 ")
+                return 2 # Value is invalid number
+        except:
+            return 3     # Value not a number
+        return 1         # Value is a valid number changes do not require recalc
+
+    def Ey_Zsafe_Callback(self, varName, index, mode):
+        self.entry_set(self.Ey_Zsafe,self.Ey_Zsafe_Check(), new=1)
+
+    def Ey_Zcut_Check(self):
+        try:
+            value = float(self.z_cut.get())
+            if  value >= 0.0:
+                self.statusMessage.set(" Max depth should be less than 0 ")
+                return 2 # Value is invalid number
+        except:
+            return 3     # Value not a number
+        return 1         # Value is a valid number changes do not require recalc
+
+    def Ey_Zcut_Callback(self, varName, index, mode):
+        self.entry_set(self.Ey_Zcut,self.Ey_Zcut_Check(), new=1)
+
+    #############################
+    # End Right Column #
+    #############################
+
+    #############################
+    # Start ROUGH Setttings     #
+    #############################
+
+    def RH_Ey_ToolDIA_Check(self):
+        try:
+            value = float(self.RH_DIA.get())
+            if  value <= 0.0:
+                self.statusMessage.set(" Diameter should be greater than 0 ")
+                return 2 # Value is invalid number
+        except:
+            return 3     # Value not a number
+
+        self.RH_STEPOVER.set(value/2)    # set a constent value for the
+                                            # stepover
+        self.RH_DEPTH_PP.set(value/2)    # roughing depth per pass
+        return 0         # Value is a valid number
+
+    def RH_Ey_ToolDIA_Callback(self, varName, index, mode):
+        self.entry_set(self.RH_Ey_ToolDIA, self.RH_Ey_ToolDIA_Check(), new=1)
+
+    def RH_Ey_Vangle_Check(self):
+        try:
+            value = float(self.RH_V_ANGLE.get())
+            if  value <= 0 or value >= 180:
+                self.statusMessage.set(" Angle should be between 0 and 180")
+                return 2 # Value is invalid number
+        except:
+            return 3     # Value not a number
+        return 0         # Value is a valid number
+
+    def RH_Ey_Vangle_Callback(self, varName, index, mode):
+        self.entry_set(self.RH_Ey_Vangle, self.RH_Ey_Vangle_Check(), new=1)
+
+    def RH_Ey_Feed_Check(self):
+        try:
+            value = float(self.RH_R_FEED.get())
+            if  value <= 0.0:
+                self.statusMessage.set(" Feed should be greater than 0 ")
+                return 2 # Value is invalid number
+        except:
+            return 3     # Value not a number
+        return 1         # Value is a valid number changes do not require recalc
+
+    def RH_Ey_Feed_Callback(self, varName, index, mode):
+        self.entry_set(self.RH_Ey_Feed,self.RH_Ey_Feed_Check(), new=1)
+
+    def RH_Ey_p_feed_Check(self):
+        try:
+            value = float(self.RH_P_FEED.get())
+            if  value <= 0.0:
+                self.statusMessage.set(" Feed should be greater than 0 ")
+                return 2 # Value is invalid number
+        except:
+            return 3     # Value not a number
+        return 0         # Value is a valid number
+
+    def RH_Ey_p_feed_Callback(self, varName, index, mode):
+        self.entry_set(self.RH_Ey_p_feed, self.RH_Ey_p_feed_Check(), new=1)
+
+    def RH_Ey_StepOver_Check(self):
+        try:
+            value = float(self.RH_STEPOVER.get())
+            if  value <= 0.0:
+                self.statusMessage.set(" Stepover should be greater than 0 ")
+                return 2 # Value is invalid number
+        except:
+            return 3     # Value not a number
+        return 0         # Value is a valid number
+
+    def RH_Ey_StepOver_Callback(self, varName, index, mode):
+        self.entry_set(self.RH_Ey_StepOver, self.RH_Ey_StepOver_Check(), new=1)
+
+    def RH_Ey_Roffset_Check(self):
+        try:
+            value = float(self.RH_OFFSET.get())
+            emvalue = float(self.dia.get())
+            if  value < 0.0:
+                self.statusMessage.set(" Roughing offset should be greater than or equal to 0 ")
+                return 2 # Value is invalid number
+            elif value > emvalue :
+                  message_box(p_name + " - WARNING!!!"," Roughing offset is dangerous for the finishing endmill")
+
+        except:
+            return 3     # Value not a number
+        return 0         # Value is a valid number
+    def RH_Ey_Roffset_Callback(self, varName, index, mode):
+        self.entry_set(self.RH_Ey_Roffset, self.RH_Ey_Roffset_Check(), new=1)
+
+    def RH_Ey_Rdepth_Check(self):
+        try:
+            value = float(self.RH_DEPTH_PP.get())
+            if  value < 0.0:
+                self.statusMessage.set(" Roughing depth per pass should be greater than or equal to 0 ")
+                return 2 # Value is invalid number
+        except:
+            return 3     # Value not a number
+        return 0         # Value is a valid number
+
+    def RH_Ey_Rdepth_Callback(self, varName, index, mode):
+        self.entry_set(self.RH_Ey_Rdepth, self.RH_Ey_Rdepth_Check(), new=1)
+
+    #############################
+    # End ROUGH setttings       #
+    #############################
+
+    def Ey_Tolerance_Check(self):
+        try:
+            value = float(self.tolerance.get())
+            if  value <= 0.0:
+                self.statusMessage.set(" Tolerance should be greater than 0 ")
+                return 2 # Value is invalid number
+        except:
+            return 3     # Value not a number
+        return 0         # Value is a valid number
+
+    def Ey_Tolerance_Callback(self, varName, index, mode):
+        self.entry_set(self.Ey_Tolerance,self.Ey_Tolerance_Check(), new=1)
+
+    def Ey_ContAngle_Check(self):
+        try:
+            value = float(self.cangle.get())
+            if  value <= 0.0 or value >= 90:
+                self.statusMessage.set(" Contact angle should be between 0 and 90 ")
+                return 2 # Value is invalid number
+        except:
+            return 3     # Value not a number
+        return 0         # Value is a valid number
+
+    def Ey_ContAngle_Callback(self, varName, index, mode):
+        self.entry_set(self.Ey_ContAngle,self.Ey_ContAngle_Check(), new=1)
+
+    def Check_All_Variables(self):
+        MAIN_error_cnt= \
+        self.entry_set(self.Ey_Yscale, self.Ey_Yscale_Check()    ,2) +\
+        self.entry_set(self.Ey_Toptol, self.Ey_Toptol_Check()    ,2) +\
+        self.entry_set(self.Ey_ToolDIA, self.Ey_ToolDIA_Check()  ,2) +\
+        self.entry_set(self.Ey_Vangle, self.Ey_Vangle_Check()    ,2) +\
+        self.entry_set(self.Ey_r_feed, self.Ey_r_feed_Check()    ,2) +\
+        self.entry_set(self.Ey_Feed,self.Ey_Feed_Check()         ,2) +\
+        self.entry_set(self.Ey_p_feed, self.Ey_p_feed_Check()    ,2) +\
+        self.entry_set(self.Ey_StepOver, self.Ey_StepOver_Check(),2) +\
+        self.entry_set(self.Ey_Zsafe,self.Ey_Zsafe_Check()       ,2) +\
+        self.entry_set(self.Ey_Zcut,self.Ey_Zcut_Check()         ,2)
+
+        GEN_error_cnt= \
+        self.entry_set(self.Ey_Tolerance,self.Ey_Tolerance_Check(),2) +\
+        self.entry_set(self.Ey_ContAngle,self.Ey_ContAngle_Check(),2)
+
+        RH_error_cnt= \
+        self.entry_set(self.RH_Ey_ToolDIA, self.RH_Ey_ToolDIA_Check()  ,2) +\
+        self.entry_set(self.RH_Ey_Vangle, self.RH_Ey_Vangle_Check()    ,2) +\
+        self.entry_set(self.RH_Ey_Feed,self.RH_Ey_Feed_Check()         ,2) +\
+        self.entry_set(self.RH_Ey_p_feed, self.RH_Ey_p_feed_Check()  ,2)   +\
+        self.entry_set(self.RH_Ey_StepOver, self.RH_Ey_StepOver_Check(),2) +\
+        self.entry_set(self.RH_Ey_Roffset, self.RH_Ey_Roffset_Check()  ,2) +\
+        self.entry_set(self.RH_Ey_Rdepth, self.RH_Ey_Rdepth_Check()    ,2)
+
+        ERROR_cnt = MAIN_error_cnt + GEN_error_cnt + RH_error_cnt
+
+        if (ERROR_cnt > 0):
+            self.statusbar.configure( bg = 'red' )
+        if (GEN_error_cnt > 0):
+            self.statusMessage.set(\
+                " Entry Error Detected: Check Entry Values in General Settings Window ")
+        if (MAIN_error_cnt > 0):
+            self.statusMessage.set(\
+                " Entry Error Detected: Check Entry Values in Main Window ")
+        if (RH_error_cnt > 0):
+            self.statusMessage.set(\
+                " Entry Error Detected: Check Entry Values in Roughing Settigns Window ")
+
+        return ERROR_cnt
+
+    def Ey_units_var_Callback(self):
+        if (self.units.get() == 'in') and (self.funits.get()=='mm/min'):
+            self.Scale_Linear_Inputs(1/25.4)
+            self.funits.set('in/min')
+        elif (self.units.get() == 'mm') and (self.funits.get()=='in/min'):
+            self.Scale_Linear_Inputs(25.4)
+            self.funits.set('mm/min')
+
+    def Scale_Linear_Inputs(self, factor=1.0):
+        try:
+            self.yscale.set(        '%.3g' %(float(self.yscale.get()        )*factor) )
+            self.toptol.set(        '%.3g' %(float(self.toptol.get()        )*factor) )
+            self.dia.set(           '%.3g' %(float(self.dia.get()           )*factor) )
+            self.r_feed.set(        '%.3g' %(float(self.r_feed.get()        )*factor) )
+            self.f_feed.set(        '%.3g' %(float(self.f_feed.get()        )*factor) )
+            self.p_feed.set(        '%.3g' %(float(self.p_feed.get()        )*factor) )
+            self.stepover.set(      '%.3g' %(float(self.stepover.get()      )*factor) )
+            self.z_cut.set(         '%.3g' %(float(self.z_cut.get()         )*factor) )
+            self.z_safe.set(        '%.3g' %(float(self.z_safe.get()        )*factor) )
+            self.RH_R_FEED.set(  '%.3g' %(float(self.RH_R_FEED.get()  )*factor) )
+            self.RH_P_FEED.set(  '%.3g' %(float(self.RH_P_FEED.get()  )*factor) )
+            self.RH_STEPOVER.set('%.3g' %(float(self.RH_STEPOVER.get())*factor) )
+            self.RH_DEPTH_PP.set('%.3g' %(float(self.RH_DEPTH_PP.get())*factor) )
+            self.RH_OFFSET.set(  '%.3g' %(float(self.RH_OFFSET.get()  )*factor) )
+            self.RH_DIA.set(     '%.3g' %(float(self.RH_DIA.get()     )*factor) )
+            self.tolerance.set(     '%.3g' %(float(self.tolerance.get()     )*factor) )
+        except:
+            print "Scale_Linear_Input not pass"
+            pass
+
+    def menu_File_Open_G_Code_File(self):
+        init_dir = os.path.dirname(self.NGC_FILE)
+        if ( not os.path.isdir(init_dir) ):
+            init_dir = os.path.expanduser("~")
+        fileselect = askopenfilename(filetypes=[("Gcode Files","*.ngc"),\
+                                                ("TAP File","*.tap"),\
+                                                ("All Files","*")],\
+                                                 initialdir=init_dir)
+
+        if fileselect != '' and fileselect != ():
+            self.Open_G_Code_File(fileselect)
+
+    def menu_File_Open_IMAGE_File(self):
+        init_dir = os.path.dirname(self.IMAGE_FILE)
+        if ( not os.path.isdir(init_dir) ):
+            init_dir = os.path.expanduser("~")
+
+        fileselect = askopenfilename(filetypes=[("Image Files", ("*.pgm","*.jpg","*.png","*.gif")),
+                                                    ("All Files","*")],\
+                                                     initialdir=init_dir)
+        if fileselect != '' and fileselect != ():
+            self.Read_image_file(fileselect)
+            self.Plot_Data()
+
+    def Open_G_Code_File(self,filename):
+        try:
+            fin = open(filename,'r')
+        except:
+            fmessage("Unable to open file: %s" %(filename))
+            return
+
+        text_codes=[]
+        ident = "config_set"
+        for line in fin:
+            #print line
+            if ident in line:
+                # BOOL
+                if   "show_axis"  in line:
+                    self.show_axis.set(line[line.find("show_axis"):].split()[1])
+                elif "invert"  in line:
+                    self.invert.set(line[line.find("invert"):].split()[1])
+                elif "normalize"  in line:
+                    self.normalize.set(line[line.find("normalize"):].split()[1])
+                elif "cuttop"  in line:
+                    self.cuttop.set(line[line.find("cuttop"):].split()[1])
+                elif "cutperim"  in line:
+                    self.cuttop.set(line[line.find("cutperim"):].split()[1])
+                elif "disable_arcs"  in line:
+                    self.cuttop.set(line[line.find("disable_arcs"):].split()[1])
+                elif "grbl_post"  in line:
+                    self.grbl_post.set(line[line.find("grbl_post"):].split()[1])
+
+                # STRING.set()
+                elif "yscale"     in line:
+                    self.yscale.set(line[line.find("yscale"):].split()[1])
+                elif "toptol"    in line:
+                    self.toptol.set(line[line.find("toptol"):].split()[1])
+                elif "vangle"    in line:
+                    self.v_angle.set(line[line.find("vangle"):].split()[1])
+                elif "stepover"    in line:
+                    self.stepover.set(line[line.find("stepover"):].split()[1])
+                elif "plfeed"    in line:
+                    self.p_feed.set(line[line.find("plfeed"):].split()[1])
+                elif "z_safe"    in line:
+                    self.z_safe.set(line[line.find("z_safe"):].split()[1])
+                elif "z_cut"    in line:
+                    self.z_cut.set(line[line.find("z_cut"):].split()[1])
+                elif "diatool"    in line:
+                    self.dia.set(line[line.find("diatool"):].split()[1])
+                elif "origin"    in line:
+                    self.origin.set(line[line.find("origin"):].split()[1])
+                elif "tool"    in line:
+                    self.tool.set(line[line.find("tool"):].split()[1])
+                elif "units"    in line:
+                    self.units.set(line[line.find("units"):].split()[1])
+                elif "plunge"    in line:
+                    self.plungetype.set(line[line.find("plunge"):].split()[1])
+                elif "r_feed"    in line:
+                     self.r_feed.set(line[line.find("r_feed"):].split()[1])
+                elif "feed"    in line:
+                     self.f_feed.set(line[line.find("feed"):].split()[1])
+                elif "lace"    in line:
+                     self.lace_bound.set(line[line.find("lace"):].split()[1])
+                elif "cangle"    in line:
+                     self.cangle.set(line[line.find("cangle"):].split()[1])
+                elif "tolerance"    in line:
+                     self.tolerance.set(line[line.find("tolerance"):].split()[1])
+                elif "splitstep"    in line:
+                     self.splitstep.set(line[line.find("splitstep"):].split()[1])
+
+                elif "scanpat"    in line:
+                     self.scanpat.set(line[line.find("scanpat"):].split("\042")[1])
+                elif "scandir"    in line:
+                     self.scandir.set(line[line.find("scandir"):].split("\042")[1])
+                elif "gpre"    in line:
+                     self.gpre.set(line[line.find("gpre"):].split("\042")[1])
+                elif "gpost"    in line:
+                     self.gpost.set(line[line.find("gpost"):].split("\042")[1])
+                elif "imagefile"    in line:
+                       self.IMAGE_FILE=(line[line.find("imagefile"):].split("\042")[1])
+
+                elif "RH_TOOL"    in line:
+                     self.RH_TOOL.set(line[line.find("RH_TOOL"):].split()[1])
+                elif "RH_DIA"    in line:
+                     self.RH_DIA.set(line[line.find("RH_DIA"):].split()[1])
+                elif "RH_V_ANGLE"    in line:
+                     self.RH_V_ANGLE.set(line[line.find("RH_V_ANGLE"):].split()[1])
+                elif "RH_R_FEED"    in line:
+                     self.RH_R_FEED.set(line[line.find("RH_R_FEED"):].split()[1])
+                elif "RH_P_FEED"    in line:
+                     self.RH_P_FEED.set(line[line.find("RH_P_FEED"):].split()[1])
+                elif "RH_STEPOVER"    in line:
+                     self.RH_STEPOVER.set(line[line.find("RH_STEPOVER"):].split()[1])
+                elif "RH_DEPTH_PP"    in line:
+                     self.RH_DEPTH_PP.set(line[line.find("RH_DEPTH_PP"):].split()[1])
+                elif "RH_OFFSET"    in line:
+                     self.RH_OFFSET.set(line[line.find("RH_OFFSET"):].split()[1])
+                elif "RH_SCANPAT"    in line:
+                     self.RH_SCANPAT.set(line[line.find("RH_SCANPAT"):].split("\042")[1])
+                elif "RH_SCANDIR"    in line:
+                     self.RH_SCANDIR.set(line[line.find("RH_SCANDIR"):].split("\042")[1])
+
+        fin.close()
+
+        fileName, fileExtension = os.path.splitext(self.IMAGE_FILE)
+        init_file=os.path.basename(fileName)
+        if init_file != "None":
+            if ( os.path.isfile(self.IMAGE_FILE) ):
+                self.Read_image_file(self.IMAGE_FILE)
+            else:
+                self.statusMessage.set("Image file not found: %s " %(self.IMAGE_FILE))
+
+        if self.units.get() == 'in':
+            self.funits.set('in/min')
+        else:
+            self.units.set('mm')
+            self.funits.set('mm/min')
+
+        temp_name, fileExtension = os.path.splitext(filename)
+        file_base=os.path.basename(temp_name)
+
+        if self.initComplete == 1:
+            self.menu_Mode_Change()
+            self.NGC_FILE = filename
+
+
+    def Read_image_file(self,fileselect):
+        im = []
+        if not ( os.path.isfile(fileselect) ):
+            self.statusMessage.set("Image file not found: %s" %(fileselect))
+            self.statusbar.configure( bg = 'red' )
+        else:
+            self.statusMessage.set("Image file: %s " %(fileselect))
+            self.statusbar.configure( bg = 'white' )
+            try:
+
+                PIL_im = Image.open(fileselect)
+                self.wim, self.him = PIL_im.size
+                # Convert image to grayscale
+                PIL_im = PIL_im.convert("L")
+
+                self.aspect_ratio =  float(self.wim-1) / float(self.him-1)
+                self.Xscale.set("%.3f" %( self.aspect_ratio * float(self.yscale.get())) )
+                self.pxlsz =  float(self.yscale.get()) / (self.him - 1.0)
+                self.pixsize.set("%.3f" %( self.pxlsz ) )
+
+
+                self.im = PIL_im
+                self.SCALE = 1
+                self.ui_TKimage = ImageTk.PhotoImage(self.im.resize((50,50), Image.ANTIALIAS))
+
+                self.IMAGE_FILE = fileselect
+
+            except:
+                self.statusMessage.set("Unable to Open Image file: %s" %(self.IMAGE_FILE))
+                self.statusbar.configure( bg = 'red' )
+
+    def menu_File_Save_G_Code_File_Finish(self):
+        self.menu_File_Save_G_Code_File(rh_flag = 0)
+
+    def menu_File_Save_G_Code_File_Rough(self):
+        win_id=self.grab_current()
+        self.menu_File_Save_G_Code_File(rh_flag = 1)
+        try:
+            win_id.withdraw()
+            win_id.deiconify()
+            win_id.grab_set()
+        except:
+            pass
+
+    def menu_File_Save_G_Code_File(self,rh_flag = 0):
+        global STOP_CALC
+        STOP_CALC = 0
+        if (self.Check_All_Variables() > 0):
+            return
+
+        init_dir = os.path.dirname(self.NGC_FILE)
+        if ( not os.path.isdir(init_dir) ):
+            init_dir = os.path.expanduser("~")
+
+        fileName, fileExtension = os.path.splitext(self.NGC_FILE)
+        init_file=os.path.basename(fileName)
+
+        fileName, fileExtension = os.path.splitext(self.IMAGE_FILE)
+        init_file=os.path.basename(fileName)
+
+        init_file = init_file.replace('_rough', '')
+        if rh_flag == 1:
+            init_file = init_file + "_rough"
+        filename = asksaveasfilename(defaultextension='.ngc', \
+                                     filetypes=[("G-Code Files","*.ngc"),("TAP File","*.tap"),("All Files","*")],\
+                                     initialdir=init_dir,\
+                                     initialfile= init_file )
+
+        if filename != '' and filename != ():
+            self.NGC_FILE = filename
+
+            try:
+                fout = open(filename,'w')
+            except:
+                self.statusMessage.set("Unable to open file for writing: %s" %(filename))
+                self.statusbar.configure( bg = 'red' )
+                return
+
+            vcalc_status = Toplevel(width=525, height=50)
+            # Use grab_set to prevent user input in the main window during calculations
+            vcalc_status.grab_set()
+
+            self.statusbar2 = Label(vcalc_status, textvariable=self.statusMessage, bd=1, relief=FLAT , height=1)
+            self.statusbar2.place(x=130+12+12, y=12, width=350, height=30)
+            self.statusMessage.set("Preparing Image Data")
+            self.statusbar.configure( bg = 'yellow' )
+
+            STOP_CALC = 0
+            self.stop_button = Button(vcalc_status,text="Stop Calculation")
+            self.stop_button.place(x=12, y=12, width=130, height=30)
+            self.stop_button.bind("<ButtonRelease-1>", self.Stop_Click)
+
+            vcalc_status.resizable(0,0)
+            vcalc_status.title('Saving File')
+            vcalc_status.iconname(p_name)
+
+            try: #Attempt to create temporary icon bitmap file
+                f = open(p_name +"_icon", 'w')
+                f.write("#define " + p_name + "_icon_width 16\n")
+                f.write("#define " + p_name +"_icon_height 16\n")
+                f.write("static unsigned char "+ p_name +"_icon_bits[] = {\n")
+                f.write("   0x3f, 0xfc, 0x1f, 0xf8, 0xcf, 0xf3, 0x6f, 0xe4, 0x6f, 0xed, 0xcf, 0xe5,\n")
+                f.write("   0x1f, 0xf4, 0xfb, 0xf3, 0x73, 0x98, 0x47, 0xce, 0x0f, 0xe0, 0x3f, 0xf8,\n")
+                f.write("   0x7f, 0xfe, 0x3f, 0xfc, 0x9f, 0xf9, 0xcf, 0xf3 };\n")
+                f.close()
+                vcalc_status.iconbitmap("@" + p_name +"_icon")
+                os.remove("" + p_name +"_icon")
+            except:
+                fmessage("Unable to create temporary icon file.")
+
+            vcalc_status.update_idletasks()
+            self.WriteGCode(rh_flag = rh_flag)
+            for line in self.gcode:
+                try:
+                    fout.write(line+'\n')
+                except:
+                    fmessage("skipping g-code line:" + line + "; may be due to non ASCII character.");
+                    pass
+            fout.close
+            if STOP_CALC == 0:
+                self.statusMessage.set("File Saved: %s" %(filename))
+                self.statusbar.configure( bg = 'white' )
+            else:
+                self.statusMessage.set("File Save Terminated")
+                self.statusbar.configure( bg = 'yellow' )
+            vcalc_status.grab_release()
+            try:
+                vcalc_status.destroy()
+            except:
+                pass
+
+    def menu_File_Quit(self):
+        if message_ask_ok_cancel("Exit", "Exiting...."):
+            self.Quit_Click(None)
+
+    def menu_View_Refresh_Callback(self, varName, index, mode):
+        self.menu_View_Refresh()
+
+    def menu_View_Refresh(self):
+        dummy_event = Event()
+        dummy_event.widget=self.master
+        self.Master_Configure(dummy_event,1)
+        self.Plot_Data()
+
+    def menu_Mode_Change_Callback(self, varName, index, mode):
+        self.menu_View_Refresh()
+
+    def menu_Mode_Change(self):
+        dummy_event = Event()
+        dummy_event.widget=self.master
+        self.Master_Configure(dummy_event,1)
+
+    def menu_View_Recalculate(self):
+        pass
+
+    def menu_Help_About(self):
+        about = p_name + " by Onekk.\n"
+
+        message_box("About " + p_name, about)
+
+    def KEY_ESC(self, event):
+        pass #A stop calculation command may go here
+
+    def KEY_F1(self, event):
+        self.menu_Help_About()
+
+    def KEY_F2(self, event):
+        self.GEN_Settings_Window()
+
+    def KEY_F3(self, event):
+        self.RH_Settings_Window()
+
+    def KEY_F4(self, event):
+        pass
+
+    def KEY_F5(self, event):
+        self.menu_View_Refresh()
+
+    def KEY_CTRL_G(self, event):
+        self.CopyClipboard_GCode()
+
+    def bindConfigure(self, event):
+        if not self.initComplete:
+            self.initComplete = 1
+            self.menu_Mode_Change()
+
+    def Master_Configure(self, event, update=0):
+        if event.widget != self.master:
+            return
+        x = int(self.master.winfo_x())
+        y = int(self.master.winfo_y())
+        w = int(self.master.winfo_width())
+        h = int(self.master.winfo_height())
+        if (self.x, self.y) == (-1,-1):
+            self.x, self.y = x,y
+        if abs(self.w-w)>10 or abs(self.h-h)>10 or update==1:
+
+            ###################################################
+            #  Form changed Size (resized) adjust as required #
+            ###################################################
+
+            self.w=w
+            self.h=h
+
+            if 0 == 0:
+                # Left Column #
+                w_label=90
+                w_entry=60
+                w_units=35
+
+                x_label_L=10
+                x_entry_L=x_label_L+w_label+10
+                x_units_L=x_entry_L+w_entry+5
+
+                Yloc=6
+                self.Ll_font_prop.place(x=x_label_L, y=Yloc, width=w_label*2, height=21)
+                Yloc=Yloc+24
+                self.Ll_Yscale.place(x=x_label_L, y=Yloc, width=w_label, height=21)
+                self.Ll_Yscale_u.place(x=x_units_L, y=Yloc, width=w_units, height=21)
+                self.Ey_Yscale.place(x=x_entry_L, y=Yloc, width=w_entry, height=23)
+
+                Yloc=Yloc+24
+                self.Ll_Yscale2.place(x=x_label_L, y=Yloc, width=w_label, height=21)
+                self.Ll_Yscale2_u.place(x=x_units_L, y=Yloc, width=w_units, height=21)
+                self.Ll_Yscale2_val.place(x=x_entry_L, y=Yloc, width=w_entry, height=21)
+
+                Yloc=Yloc+24
+                self.Ll_PixSize.place(x=x_label_L, y=Yloc, width=w_label, height=21)
+                self.Ll_PixSize_u.place(x=x_units_L, y=Yloc, width=w_units, height=21)
+                self.Ll_PixSize_val.place(x=x_entry_L, y=Yloc, width=w_entry, height=21)
+
+                Yloc=Yloc+24+12
+                self.separator1.place(x=x_label_L, y=Yloc,width=w_label+75+40, height=2)
+                Yloc=Yloc+6
+                self.Ll_pos_orient.place(x=x_label_L, y=Yloc, width=w_label*2, height=21)
+
+                Yloc=Yloc+24
+                self.Ll_Invert_Color_FALSE.place(x=x_label_L, y=Yloc, width=w_label, height=21)
+                self.Radio_Invert_Color_FALSE.place(x=x_entry_L+20, y=Yloc, width=75, height=23)
+
+                Yloc=Yloc+24
+                #self.Ll_Invert_Color_TRUE.place(x=x_label_L, y=Yloc, width=w_label, height=21)
+                self.Radio_Invert_Color_TRUE.place(x=x_entry_L+20, y=Yloc, width=75, height=23)
+
+                Yloc=Yloc+24
+                self.Ll_normalize.place(x=x_label_L, y=Yloc, width=w_label+20, height=21)
+                self.Checkbutton_normalize.place(x=x_entry_L+20, y=Yloc, width=w_entry+20, height=23)
+
+                Yloc=Yloc+24
+                self.Ll_Origin.place(x=x_label_L, y=Yloc, width=w_label, height=21)
+                self.Origin_OptionMenu.place(x=x_entry_L, y=Yloc, width=w_entry+40, height=23)
+
+                Yloc=Yloc+24+12
+                self.separator2.place(x=x_label_L, y=Yloc,width=w_label+75+40, height=2)
+
+                Yloc=Yloc+6
+                self.Ll_CutTop.place(x=x_label_L, y=Yloc, width=w_label+20, height=21)
+                self.Checkbutton_CutTop.place(x=x_entry_L+20, y=Yloc, width=w_entry+20, height=23)
+
+                Yloc=Yloc+24
+                self.Ll_Toptol.place(x=x_label_L, y=Yloc, width=w_label, height=21)
+                self.Ll_Toptol_u.place(x=x_units_L, y=Yloc, width=w_units, height=21)
+                self.Ey_Toptol.place(x=x_entry_L, y=Yloc, width=w_entry, height=23)
+                # End Left Column #
+
+                # Start Right Column
+                w_label=90
+                w_entry=60
+                w_units=35
+
+                x_label_R=self.w - 220
+                x_entry_R=x_label_R+w_label+10
+                x_units_R=x_entry_R+w_entry+5
+
+                Yloc=6
+                self.Ll_tool_opt.place(x=x_label_R, y=Yloc, width=w_label*2, height=21)
+
+                Yloc=Yloc+24
+                self.Ll_ToolDIA.place(x=x_label_R,   y=Yloc, width=w_label, height=21)
+                self.Ll_ToolDIA_u.place(x=x_units_R, y=Yloc, width=w_units, height=21)
+                self.Ey_ToolDIA.place(x=x_entry_R,   y=Yloc, width=w_entry, height=23)
+
+                Yloc=Yloc+24
+                self.Ll_Tool.place(x=x_label_R, y=Yloc, width=w_label, height=21)
+                self.Tool_OptionMenu.place(x=x_entry_R, y=Yloc, width=w_entry+40, height=23)
+
+                Yloc=Yloc+24
+                self.Ll_Vangle.place(x=x_label_R, y=Yloc, width=w_label, height=21)
+                self.Ey_Vangle.place(x=x_entry_R, y=Yloc, width=w_entry, height=23)
+
+                Yloc=Yloc+24+12
+                self.separator3.place(x=x_label_R, y=Yloc,width=w_label+75+40, height=2)
+
+                Yloc=Yloc+6
+                self.Ll_gcode_opt.place(x=x_label_R, y=Yloc, width=w_label*2, height=21)
+
+                Yloc=Yloc+24
+                self.Ll_Scanpat.place(x=x_label_R, y=Yloc, width=w_label, height=21)
+                self.ScanPat_OptionMenu.place(x=x_entry_R, y=Yloc, width=w_entry+40, height=23)
+
+                Yloc=Yloc+24
+                self.Ll_CutPerim.place(x=x_label_R, y=Yloc, width=w_label, height=21)
+                self.Checkbutton_CutPerim.place(x=x_entry_R, y=Yloc, width=w_entry+40, height=23)
+
+                Yloc=Yloc+24
+                self.Ll_Scandir.place(x=x_label_R, y=Yloc, width=w_label, height=21)
+                self.ScanDir_OptionMenu.place(x=x_entry_R, y=Yloc, width=w_entry+40, height=23)
+
+                Yloc=Yloc+24
+                self.Ey_r_feed.place(  x=x_entry_R, y=Yloc, width=w_entry, height=23)
+                self.Ll_r_feed.place(  x=x_label_R, y=Yloc, width=w_label, height=21)
+                self.Ll_r_feed_u.place(x=x_units_R, y=Yloc, width=w_units+15, height=21)
+
+                Yloc=Yloc+24
+                self.Ey_Feed.place(  x=x_entry_R, y=Yloc, width=w_entry, height=23)
+                self.Ll_Feed.place(  x=x_label_R, y=Yloc, width=w_label, height=21)
+                self.Ll_Feed_u.place(x=x_units_R, y=Yloc, width=w_units+15, height=21)
+
+                Yloc=Yloc+24
+                self.Ll_p_feed.place(x=x_label_R,  y=Yloc, width=w_label,   height=21)
+                self.Ey_p_feed.place(x=x_entry_R,  y=Yloc, width=w_entry,   height=23)
+                self.Ll_p_feed_u.place(x=x_units_R,y=Yloc, width=w_units+15,height=21)
+
+                Yloc=Yloc+24
+                self.Ll_StepOver.place(x=x_label_R, y=Yloc, width=w_label, height=21)
+                self.Ll_StepOver_u.place(x=x_units_R, y=Yloc, width=w_units, height=21)
+                self.Ey_StepOver.place(x=x_entry_R, y=Yloc, width=w_entry, height=23)
+
+                Yloc=Yloc+24
+                self.Ey_Zsafe.place(  x=x_entry_R, y=Yloc, width=w_entry, height=23)
+                self.Ll_Zsafe.place(  x=x_label_R, y=Yloc, width=w_label, height=21)
+                self.Ll_Zsafe_u.place(x=x_units_R, y=Yloc, width=w_units, height=21)
+
+
+                Yloc=Yloc+24
+                self.Ll_Zcut.place(  x=x_label_R, y=Yloc, width=w_label, height=21)
+                self.Ll_Zcut_u.place(x=x_units_R, y=Yloc, width=w_units, height=21)
+                self.Ey_Zcut.place(  x=x_entry_R, y=Yloc, width=w_entry, height=23)
+
+                Yloc=Yloc+24+12
+                self.separator4.place(x=x_label_R, y=Yloc,width=w_label+75+40, height=2)
+
+                # Buttons etc.
+                Yloc=Yloc+12
+                self.Roughing_but.place(x=x_label_R, y=Yloc, width=90+75+40, height=30)
+
+                # Buttons etc.
+                Ybut=self.h-60
+                self.Save_Button.place(x=12, y=Ybut, width=95, height=30)
+
+                self.PreviewCanvas.configure( width = self.w-455, height = self.h-50 )
+                self.PreviewCanvas_frame.place(x=220, y=10)
+
+                self.Set_Input_States()
+            self.Plot_Data()
+
+    def Recalculate_RQD_Click(self, event):
+        self.menu_View_Refresh()
+
+    def Set_Input_States(self):
+        if self.tool.get() != "V":
+            self.Ll_Vangle.configure(state="disabled")
+            self.Ey_Vangle.configure(state="disabled")
+        else:
+            self.Ll_Vangle.configure(state="normal")
+            self.Ey_Vangle.configure(state="normal")
+
+        if self.cuttop.get():
+            self.Ey_Toptol.configure(state="disabled")
+            self.Ll_Toptol.configure(state="disabled")
+            self.Ll_Toptol_u.configure(state="disabled")
+        else:
+            self.Ey_Toptol.configure(state="normal")
+            self.Ll_Toptol.configure(state="normal")
+            self.Ll_Toptol_u.configure(state="normal")
+
+    def Set_Input_States_Event(self,event):
+        self.Set_Input_States()
+
+    def Set_Input_States_GEN(self):
+        if self.lace_bound.get() == "None":
+            self.Ll_ContAngle.configure(state="disabled")
+            self.Ey_ContAngle.configure(state="disabled")
+        else:
+            self.Ll_ContAngle.configure(state="normal")
+            self.Ey_ContAngle.configure(state="normal")
+
+        if ( self.scanpat.get().find("R") == -1) or \
+           ( self.scanpat.get().find("C") == -1):
+            self.Ll_LaceBound.configure(state="disabled")
+            self.LaceBound_OptionMenu.configure(state="disabled")
+            self.Ll_ContAngle.configure(state="disabled")
+            self.Ey_ContAngle.configure(state="disabled")
+        else:
+            self.Ll_LaceBound.configure(state="normal")
+            self.LaceBound_OptionMenu.configure(state="normal")
+
+    def Set_Input_States_GEN_Event(self,event):
+        self.Set_Input_States_GEN()
+
+    def Set_Input_States_ROUGH(self):
+        if self.RH_TOOL.get() != "V":
+            self.RH_Ll_Vangle.configure(state="disabled")
+            self.RH_Ey_Vangle.configure(state="disabled")
+        else:
+            self.RH_Ll_Vangle.configure(state="normal")
+            self.RH_Ey_Vangle.configure(state="normal")
+
+    def Set_Input_States_Event_ROUGH(self,event):
+        self.Set_Input_States_ROUGH()
+
+
+    ##########################################
+    #        CANVAS PLOTTING STUFF           #
+    ##########################################
+
+    def Plot_Data(self):
+        self.PreviewCanvas.delete(ALL)
+
+        if (self.Check_All_Variables() > 0):
+            return
+
+        cszw = int(self.PreviewCanvas.cget("width"))
+        cszh = int(self.PreviewCanvas.cget("height"))
+        wc = float(cszw/2)
+        hc = float(cszh/2)
+
+        try:
+            test = self.im.size
+            self.SCALE = min( float(cszw-20)/float(self.wim), float(cszh-20)/float(self.him))
+            if self.SCALE < 1:
+                nw=int(self.SCALE*self.wim)
+                nh=int(self.SCALE*self.him)
+            else:
+                nw = self.wim
+                nh = self.him
+                self.SCALE = 1
+            self.ui_TKimage = ImageTk.PhotoImage(self.im.resize((nw,nh), Image.ANTIALIAS))
+        except:
+            self.SCALE = 1
+
+        self.canvas_image = self.PreviewCanvas.create_image(wc, \
+                            hc, anchor=CENTER, image=self.ui_TKimage)
+
+        midx = 0
+        midy = 0
+        minx = int(self.wim/2)
+        miny = int(self.him/2)
+        maxx = -minx
+        maxy = -miny
+
+        ##########################################
+        #         ORIGIN LOCATING STUFF          #
+        ##########################################
+
+        CASE = str(self.origin.get())
+        if     CASE == "Top-Left":
+            x_zero = minx
+            y_zero = maxy
+        elif   CASE == "Top-Center":
+            x_zero = midx
+            y_zero = maxy
+        elif   CASE == "Top-Right":
+            x_zero = maxx
+            y_zero = maxy
+        elif   CASE == "Mid-Left":
+            x_zero = minx
+            y_zero = midy
+        elif   CASE == "Mid-Center":
+            x_zero = midx
+            y_zero = midy
+        elif   CASE == "Mid-Right":
+            x_zero = maxx
+            y_zero = midy
+        elif   CASE == "Bot-Left":
+            x_zero = minx
+            y_zero = miny
+        elif   CASE == "Bot-Center":
+            x_zero = midx
+            y_zero = miny
+        elif   CASE == "Bot-Right":
+            x_zero = maxx
+            y_zero = miny
+        else:          #"Default"
+            x_zero = minx
+            y_zero = miny
+
+        axis_length = int(self.wim/4)
+
+        PlotScale =  self.SCALE
+        axis_x1 =  cszw/2 + (-x_zero             ) * PlotScale
+        axis_x2 =  cszw/2 + ( axis_length-x_zero ) * PlotScale
+        axis_y1 =  cszh/2 - (-y_zero             ) * PlotScale
+        axis_y2 =  cszh/2 - ( axis_length-y_zero ) * PlotScale
+
+        for seg in self.segID:
+            self.PreviewCanvas.delete(seg)
+        self.segID = []
+        if self.show_axis.get() == True:
+            # Plot coordinate system origin
+            self.segID.append( self.PreviewCanvas.create_line(axis_x1,axis_y1,\
+                                                                  axis_x2,axis_y1,\
+                                                                  fill = 'red'  , width = 2))
+            self.segID.append( self.PreviewCanvas.create_line(axis_x1,axis_y1,\
+                                                                  axis_x1,axis_y2,\
+                                                                  fill = 'green', width = 2))
+
+    ####################################
+    #      General Settings Window     #
+    ####################################
+
+    def GEN_Settings_Window(self):
+        gen_settings = Toplevel(width=560, height=360)
+        gen_settings.grab_set() # Use grab_set to prevent user input in the main window during calculations
+        gen_settings.resizable(0,0)
+        gen_settings.title('Settings')
+        gen_settings.iconname("Settings")
+
+        try: #Attempt to create temporary icon bitmap file
+            f = open(p_name +"_icon", 'w')
+            f.write("#define " + p_name + "_icon_width 16\n")
+            f.write("#define " + p_name +"_icon_height 16\n")
+            f.write("static unsigned char "+ p_name +"_icon_bits[] = {\n")
+            f.write("   0x3f, 0xfc, 0x1f, 0xf8, 0xcf, 0xf3, 0x6f, 0xe4, 0x6f, 0xed, 0xcf, 0xe5,\n")
+            f.write("   0x1f, 0xf4, 0xfb, 0xf3, 0x73, 0x98, 0x47, 0xce, 0x0f, 0xe0, 0x3f, 0xf8,\n")
+            f.write("   0x7f, 0xfe, 0x3f, 0xfc, 0x9f, 0xf9, 0xcf, 0xf3 };\n")
+            f.close()
+            gen_settings.iconbitmap("@" + p_name +"_icon")
+            os.remove("" + p_name +"_icon")
+        except:
+            pass
+
+        D_Yloc  = 6
+        D_dY = 24
+        xd_label_L = 12
+
+        w_label=110
+        w_entry=60
+        w_units=35
+        xd_entry_L=xd_label_L+w_label+10
+        xd_units_L=xd_entry_L+w_entry+5
+
+        #Radio Button
+        D_Yloc=D_Yloc+D_dY
+        self.Ll_Units = Label(gen_settings,text="Units")
+        self.Ll_Units.place(x=xd_label_L, y=D_Yloc, width=113, height=21)
+        self.Radio_Units_IN = Radiobutton(gen_settings,text="inch", value="in",
+                                         width="100", anchor=W)
+        self.Radio_Units_IN.place(x=w_label+22, y=D_Yloc, width=75, height=23)
+        self.Radio_Units_IN.configure(variable=self.units, command=self.Ey_units_var_Callback )
+        self.Radio_Units_MM = Radiobutton(gen_settings,text="mm", value="mm",
+                                         width="100", anchor=W)
+        self.Radio_Units_MM.place(x=w_label+110, y=D_Yloc, width=75, height=23)
+        self.Radio_Units_MM.configure(variable=self.units, command=self.Ey_units_var_Callback )
+
+        D_Yloc=D_Yloc+D_dY
+        self.Ll_Tolerance = Label(gen_settings,text="tolerance")
+        self.Ll_Tolerance.place(x=xd_label_L, y=D_Yloc, width=w_label, height=21)
+        self.Ll_Tolerance_u = Label(gen_settings,textvariable=self.units, anchor=W)
+        self.Ll_Tolerance_u.place(x=xd_units_L, y=D_Yloc, width=w_units, height=21)
+        self.Ey_Tolerance = Entry(gen_settings,width="15")
+        self.Ey_Tolerance.place(x=xd_entry_L, y=D_Yloc, width=w_entry, height=23)
+        self.Ey_Tolerance.configure(textvariable=self.tolerance)
+        self.tolerance.trace_variable("w", self.Ey_Tolerance_Callback)
+        self.entry_set(self.Ey_Tolerance,self.Ey_Tolerance_Check(),2)
+
+        D_Yloc=D_Yloc+D_dY
+        self.Ll_Gpre = Label(gen_settings,text="G Code Header")
+        self.Ll_Gpre.place(x=xd_label_L, y=D_Yloc, width=w_label, height=21)
+        self.Ey_Gpre = Entry(gen_settings,width="15")
+        self.Ey_Gpre.place(x=xd_entry_L, y=D_Yloc, width=300, height=23)
+        self.Ey_Gpre.configure(textvariable=self.gpre)
+
+        D_Yloc=D_Yloc+D_dY
+        self.Ll_Gpost = Label(gen_settings,text="G Code Postscript")
+        self.Ll_Gpost.place(x=xd_label_L, y=D_Yloc, width=w_label, height=21)
+        self.Ey_Gpost = Entry(gen_settings)
+        self.Ey_Gpost.place(x=xd_entry_L, y=D_Yloc, width=300, height=23)
+        self.Ey_Gpost.configure(textvariable=self.gpost)
+
+        D_Yloc=D_Yloc+D_dY
+        self.Ll_LaceBound = Label(gen_settings,text="Lace Bounding")
+        self.Ll_LaceBound.place(x=xd_label_L, y=D_Yloc, width=w_label, height=21)
+        self.LaceBound_OptionMenu = OptionMenu(gen_settings, self.lace_bound, "None","Secondary","Full",\
+                                               command=self.Set_Input_States_GEN_Event)
+        self.LaceBound_OptionMenu.place(x=xd_entry_L, y=D_Yloc, width=w_entry+40, height=23)
+
+        D_Yloc=D_Yloc+D_dY
+        self.Ll_ContAngle = Label(gen_settings,text="LB Contact Angle")
+        self.Ll_ContAngle.place(x=xd_label_L, y=D_Yloc, width=w_label, height=21)
+        self.Ll_ContAngle_u = Label(gen_settings,text="deg", anchor=W)
+        self.Ll_ContAngle_u.place(x=xd_units_L, y=D_Yloc, width=w_units, height=21)
+        self.Ey_ContAngle = Entry(gen_settings,width="15")
+        self.Ey_ContAngle.place(x=xd_entry_L, y=D_Yloc, width=w_entry, height=23)
+        self.Ey_ContAngle.configure(textvariable=self.cangle)
+        self.cangle.trace_variable("w", self.Ey_ContAngle_Callback)
+        self.entry_set(self.Ey_ContAngle,self.Ey_ContAngle_Check(),2)
+
+        #Radio Button
+        D_Yloc=D_Yloc+D_dY
+        self.Ll_SplitStep = Label(gen_settings,text="Offset Stepover")
+        self.Ll_SplitStep.place(x=xd_label_L, y=D_Yloc, width=113, height=21)
+
+        self.Radio_SplitStep_N = Radiobutton(gen_settings,text="None", value="0",
+                                         width="100", anchor=W)
+        self.Radio_SplitStep_N.place(x=w_label+22, y=D_Yloc, width=75, height=23)
+        self.Radio_SplitStep_N.configure(variable=self.splitstep )
+
+        self.Radio_SplitStep_H = Radiobutton(gen_settings,text="1/2 Step", value="0.5",
+                                         width="100", anchor=W)
+        self.Radio_SplitStep_H.place(x=w_label+110, y=D_Yloc, width=75, height=23)
+        self.Radio_SplitStep_H.configure(variable=self.splitstep )
+
+        self.Radio_SplitStep_Q = Radiobutton(gen_settings,text="1/4 Step", value="0.25",
+                                         width="100", anchor=W)
+        self.Radio_SplitStep_Q.place(x=w_label+198, y=D_Yloc, width=75, height=23)
+        self.Radio_SplitStep_Q.configure(variable=self.splitstep )
+
+        #Radio Button
+        D_Yloc=D_Yloc+D_dY
+        self.Ll_PlungeType = Label(gen_settings,text="Plunge Type")
+        self.Ll_PlungeType.place(x=xd_label_L, y=D_Yloc, width=113, height=21)
+        self.Radio_PlungeType_S = Radiobutton(gen_settings,text="Vertical", value="simple",
+                                         width="100", anchor=W)
+        self.Radio_PlungeType_S.place(x=w_label+22, y=D_Yloc, width=75, height=23)
+        self.Radio_PlungeType_S.configure(variable=self.plungetype )
+        self.Radio_PlungeType_A = Radiobutton(gen_settings,text="Arc", value="arc",
+                                         width="100", anchor=W)
+        self.Radio_PlungeType_A.place(x=w_label+110, y=D_Yloc, width=75, height=23)
+        self.Radio_PlungeType_A.configure(variable=self.plungetype )
+
+        D_Yloc=D_Yloc+D_dY
+        self.Ll_Disable_Arcs = Label(gen_settings,text="Disable G-Code Arcs")
+        self.Ll_Disable_Arcs.place(x=xd_label_L, y=D_Yloc, width=113, height=21)
+        self.Checkbutton_Disable_Arcs = Checkbutton(gen_settings,text=" ", \
+                                              anchor=W, command=self.Set_Input_States)
+        self.Checkbutton_Disable_Arcs.place(x=w_label+22, y=D_Yloc, width=75, height=23)
+
+        self.Ll_Disable_Arcs.place(x=xd_label_L, y=D_Yloc, width=113, height=21)
+        self.Checkbutton_Disable_Arcs.configure(variable=self.disable_arcs)
+
+        D_Yloc=D_Yloc+D_dY
+        self.Ll_GRBL = Label(gen_settings,text="GRBL Compatibility")
+        self.Ll_GRBL.place(x=xd_label_L, y=D_Yloc, width=113, height=21)
+        self.Checkbutton_GRBL = Checkbutton(gen_settings,text=" ", \
+                                              anchor=W, command=self.Set_Input_States)
+        self.Checkbutton_GRBL.place(x=w_label+22, y=D_Yloc, width=75, height=23)
+
+        self.Ll_GRBL.place(x=xd_label_L, y=D_Yloc, width=113, height=21)
+        self.Checkbutton_GRBL.configure(variable=self.grbl_post)
+
+        ## Buttons ##
+        gen_settings.update_idletasks()
+        Ybut=int(gen_settings.winfo_height())-30
+        Xbut=int(gen_settings.winfo_width()/2)
+
+        self.GEN_Close = Button(gen_settings,text="Close",command=self.Close_Current_Window_Click)
+        self.GEN_Close.place(x=Xbut, y=Ybut, width=130, height=30, anchor="center")
+
+        self.Set_Input_States_GEN()
+
+    ####################################
+    #      Roughing Settings Window    #
+    ####################################
+
+    def RH_Settings_Window(self):
+        rh_settings = Toplevel(width=350, height=460)
+        rh_settings.grab_set() # Use grab_set to prevent user input in the main window during calculations
+        rh_settings.resizable(0,0)
+        rh_settings.title('Roughing Settings')
+        rh_settings.iconname("Roughing")
+
+        try: #Attempt to create temporary icon bitmap file
+            f = open(p_name +"_icon", 'w')
+            f.write("#define " + p_name + "_icon_width 16\n")
+            f.write("#define " + p_name +"_icon_height 16\n")
+            f.write("static unsigned char "+ p_name +"_icon_bits[] = {\n")
+            f.write("   0x3f, 0xfc, 0x1f, 0xf8, 0xcf, 0xf3, 0x6f, 0xe4, 0x6f, 0xed, 0xcf, 0xe5,\n")
+            f.write("   0x1f, 0xf4, 0xfb, 0xf3, 0x73, 0x98, 0x47, 0xce, 0x0f, 0xe0, 0x3f, 0xf8,\n")
+            f.write("   0x7f, 0xfe, 0x3f, 0xfc, 0x9f, 0xf9, 0xcf, 0xf3 };\n")
+            f.close()
+            rh_settings.iconbitmap("@" + p_name +"_icon")
+            os.remove("" + p_name +"_icon")
+        except:
+            pass
+
+        self.RH_separator1 = Frame(rh_settings, height=2, bd=1, relief=SUNKEN)
+        self.RH_separator2 = Frame(rh_settings, height=2, bd=1, relief=SUNKEN)
+        self.RH_separator3 = Frame(rh_settings, height=2, bd=1, relief=SUNKEN)
+        self.RH_separator4 = Frame(rh_settings, height=2, bd=1, relief=SUNKEN)
+
+        D_Yloc  = 6
+        D_dY = 24
+        xd_label_L = 12
+
+        w_label=170
+        w_entry=60
+        w_units=35
+        xd_entry_L=xd_label_L+w_label+10
+        xd_units_L=xd_entry_L+w_entry+5
+
+        ######################
+        # Roughing setttings #
+        ######################
+
+        # Start Right Column
+        D_Yloc=6
+        self.RH_Ll_tool_opt = Label(rh_settings,text="Roughing Tool Properties:", anchor=W)
+
+        self.RH_Ll_Tool      = Label(rh_settings,text="Roughing Tool End", anchor=CENTER )
+        self.RH_Tool_OptionMenu       = OptionMenu(rh_settings, self.RH_TOOL, "Ball","V","Flat",\
+                                               command=self.Set_Input_States_Event_ROUGH)
+        self.RH_Ll_tool_opt.place(x=xd_label_L, y=D_Yloc, width=w_label*2, height=21)
+
+        D_Yloc=D_Yloc+24
+        self.RH_Ll_ToolDIA = Label(rh_settings,text="Roughing Tool DIA")
+        self.RH_Ll_ToolDIA_u = Label(rh_settings,textvariable=self.units, anchor=W)
+        self.RH_Ey_ToolDIA = Entry(rh_settings,width="15")
+
+        self.RH_Ey_ToolDIA.configure(textvariable=self.RH_DIA)
+        self.RH_Ey_ToolDIA.bind('<Return>', self.Recalculate_Click)
+        self.RH_DIA.trace_variable("w", self.RH_Ey_ToolDIA_Callback)
+        self.RH_Ll_ToolDIA.place(x=xd_label_L,   y=D_Yloc, width=w_label, height=21)
+        self.RH_Ll_ToolDIA_u.place(x=xd_units_L, y=D_Yloc, width=w_units, height=21)
+        self.RH_Ey_ToolDIA.place(x=xd_entry_L,   y=D_Yloc, width=w_entry, height=23)
+
+        D_Yloc=D_Yloc+24
+        self.RH_Ll_Tool.place(x=xd_label_L, y=D_Yloc, width=w_label, height=21)
+        self.RH_Tool_OptionMenu.place(x=xd_entry_L, y=D_Yloc, width=w_entry+40, height=23)
+
+        D_Yloc=D_Yloc+24
+        self.RH_Ll_Vangle = Label(rh_settings,text="Roughing V-Bit Angle", anchor=CENTER )
+        self.RH_Ey_Vangle = Entry(rh_settings,width="15")
+        self.RH_Ey_Vangle.configure(textvariable=self.RH_V_ANGLE)
+        self.RH_Ey_Vangle.bind('<Return>', self.Recalculate_Click)
+        self.RH_V_ANGLE.trace_variable("w", self.RH_Ey_Vangle_Callback)
+        self.RH_Ll_Vangle.place(x=xd_label_L, y=D_Yloc, width=w_label, height=21)
+        self.RH_Ey_Vangle.place(x=xd_entry_L, y=D_Yloc, width=w_entry, height=23)
+
+        D_Yloc=D_Yloc+24+12
+        self.RH_separator3.place(x=xd_label_L, y=D_Yloc,width=w_label+75+40, height=2)
+
+        D_Yloc=D_Yloc+6
+        self.RH_Ll_gcode_opt = Label(rh_settings,text="Roughing Gcode Properties:", anchor=W)
+        self.RH_Ll_gcode_opt.place(x=xd_label_L, y=D_Yloc, width=w_label*2, height=21)
+
+        D_Yloc=D_Yloc+24
+        self.RH_Ll_Scanpat      = Label(rh_settings,text="Roughing Scan Pattern", anchor=CENTER )
+        self.RH_ScanPat_OptionMenu = OptionMenu(rh_settings, self.RH_SCANPAT, "Rows","Columns",\
+                                           "R then C", "C then R")
+        self.RH_Ll_Scanpat.place(x=xd_label_L, y=D_Yloc, width=w_label, height=21)
+        self.RH_ScanPat_OptionMenu.place(x=xd_entry_L, y=D_Yloc, width=w_entry+40, height=23)
+
+        D_Yloc=D_Yloc+24
+        self.RH_Ll_Scandir      = Label(rh_settings,text="Roughing Scan Direction", anchor=CENTER )
+        self.RH_ScanDir_OptionMenu = OptionMenu(rh_settings, self.RH_SCANDIR, "Alternating", "Positive",
+                                            "Negative", "Up Mill", "Down Mill")
+        self.RH_Ll_Scandir.place(x=xd_label_L, y=D_Yloc, width=w_label, height=21)
+        self.RH_ScanDir_OptionMenu.place(x=xd_entry_L, y=D_Yloc, width=w_entry+40, height=23)
+
+        D_Yloc=D_Yloc+24
+        self.RH_Ll_Feed = Label(rh_settings,text="Roughing Feed Rate")
+        self.RH_Ll_Feed_u = Label(rh_settings,textvariable=self.funits, anchor=W)
+        self.RH_Ey_Feed = Entry(rh_settings,width="15")
+        self.RH_Ey_Feed.configure(textvariable=self.RH_R_FEED)
+        self.RH_Ey_Feed.bind('<Return>', self.Recalculate_Click)
+        self.RH_R_FEED.trace_variable("w", self.RH_Ey_Feed_Callback)
+        self.RH_Ey_Feed.place(  x=xd_entry_L, y=D_Yloc, width=w_entry, height=23)
+        self.RH_Ll_Feed.place(  x=xd_label_L, y=D_Yloc, width=w_label, height=21)
+        self.RH_Ll_Feed_u.place(x=xd_units_L, y=D_Yloc, width=w_units+15, height=21)
+
+        D_Yloc=D_Yloc+24
+        self.RH_Ll_p_feed = Label(rh_settings,text="Roughing Plunge Feed", anchor=CENTER )
+        self.RH_Ll_p_feed_u = Label(rh_settings,textvariable=self.funits, anchor=W)
+        self.RH_Ey_p_feed = Entry(rh_settings,width="15")
+        self.RH_Ey_p_feed.configure(textvariable=self.RH_P_FEED)
+        self.RH_Ey_p_feed.bind('<Return>', self.Recalculate_Click)
+        self.RH_P_FEED.trace_variable("w", self.Ey_p_feed_Callback)
+        self.RH_Ll_p_feed.place(x=xd_label_L,  y=D_Yloc, width=w_label,   height=21)
+        self.RH_Ey_p_feed.place(x=xd_entry_L,  y=D_Yloc, width=w_entry,   height=23)
+        self.RH_Ll_p_feed_u.place(x=xd_units_L,y=D_Yloc, width=w_units+15,height=21)
+
+        D_Yloc=D_Yloc+24
+        self.RH_Ll_StepOver = Label(rh_settings,text="Roughing Stepover", anchor=CENTER )
+        self.RH_Ll_StepOver_u = Label(rh_settings,textvariable=self.units, anchor=W)
+        self.RH_Ey_StepOver = Entry(rh_settings,width="15")
+        self.RH_Ey_StepOver.configure(textvariable=self.RH_STEPOVER)
+        self.RH_Ey_StepOver.bind('<Return>', self.Recalculate_Click)
+        self.RH_STEPOVER.trace_variable("w", self.RH_Ey_StepOver_Callback)
+        self.RH_Ll_StepOver.place(x=xd_label_L, y=D_Yloc, width=w_label, height=21)
+        self.RH_Ll_StepOver_u.place(x=xd_units_L, y=D_Yloc, width=w_units, height=21)
+        self.RH_Ey_StepOver.place(x=xd_entry_L, y=D_Yloc, width=w_entry, height=23)
+
+        D_Yloc=D_Yloc+24+12
+        self.RH_separator4.place(x=xd_label_L, y=D_Yloc,width=w_label+75+40, height=2)
+
+        D_Yloc=D_Yloc+6
+        self.RH_Ll_roughing_props = Label(rh_settings,text="Roughing Properties:",anchor=W)
+        self.RH_Ll_roughing_props.place(x=xd_label_L, y=D_Yloc, width=w_label*2, height=21)
+
+        D_Yloc=D_Yloc+24
+        self.RH_Ll_Roffset = Label(rh_settings,text="Roughing Offset", anchor=CENTER )
+        self.RH_Ll_Roffset_u = Label(rh_settings,textvariable=self.units, anchor=W)
+        self.RH_Ey_Roffset = Entry(rh_settings,width="15")
+        self.RH_Ey_Roffset.configure(textvariable=self.RH_OFFSET)
+        self.RH_Ey_Roffset.bind('<Return>', self.Recalculate_Click)
+        self.RH_OFFSET.trace_variable("w", self.RH_Ey_Roffset_Callback)
+        self.RH_Ll_Roffset.place(x=xd_label_L, y=D_Yloc, width=w_label, height=21)
+        self.RH_Ll_Roffset_u.place(x=xd_units_L, y=D_Yloc, width=w_units, height=21)
+        self.RH_Ey_Roffset.place(x=xd_entry_L, y=D_Yloc, width=w_entry, height=23)
+
+        D_Yloc=D_Yloc+24
+        self.RH_Ll_Rdepth = Label(rh_settings,text="Roughing Depth/Pass", anchor=CENTER )
+        self.RH_Ll_Rdepth_u = Label(rh_settings,textvariable=self.units, anchor=W)
+        self.RH_Ey_Rdepth = Entry(rh_settings,width="15")
+        self.RH_Ey_Rdepth.configure(textvariable=self.RH_DEPTH_PP)
+        self.RH_Ey_Rdepth.bind('<Return>', self.Recalculate_Click)
+        self.RH_DEPTH_PP.trace_variable("w", self.RH_Ey_Rdepth_Callback)
+        self.RH_Ll_Rdepth.place(x=xd_label_L, y=D_Yloc, width=w_label, height=21)
+        self.RH_Ll_Rdepth_u.place(x=xd_units_L, y=D_Yloc, width=w_units, height=21)
+        self.RH_Ey_Rdepth.place(x=xd_entry_L, y=D_Yloc, width=w_entry, height=23)
+
+        ##########################
+        # End Roughing Setttings #
+        ##########################
+
+        ## Buttons ##
+        rh_settings.update_idletasks()
+        Ybut=int(rh_settings.winfo_height())-30
+        Xbut=int(rh_settings.winfo_width()/2)
+
+        self.RH_Save = Button(rh_settings,text="Save\nRoughing G-Code",\
+                                 command=self.menu_File_Save_G_Code_File_Rough)
+        self.RH_Save.place(x=Xbut, y=Ybut, width=130, height=40, anchor="e")
+
+        self.RH_Close = Button(rh_settings,text="Close",\
+                                  command=self.Close_Current_Window_Click)
+        self.RH_Close.place(x=Xbut, y=Ybut, width=130, height=40, anchor="w")
+
+        self.Set_Input_States_ROUGH()
+
+#######################################
+#             Author.py               #
+#             A component of emc2     #
+#######################################
+
+# Compute the 3D distance from the line segment l1..l2 to the point p.
+# (Those are lower case L1 and L2)
+def dist_lseg(l1, l2, p):
+    x0, y0, z0 = l1
+    xa, ya, za = l2
+    xi, yi, zi = p
+
+    dx = xa-x0
+    dy = ya-y0
+    dz = za-z0
+    d2 = dx*dx + dy*dy + dz*dz
+
+    if d2 == 0: return 0
+
+    t = (dx * (xi-x0) + dy * (yi-y0) + dz * (zi-z0)) / d2
+    if t < 0: t = 0
+    if t > 1: t = 1
+    dist2 = (xi - x0 - t*dx)**2 + (yi - y0 - t*dy)**2 + (zi - z0 - t*dz)**2
+
+    return dist2 ** .5
+
+def rad1(x1,y1,x2,y2,x3,y3):
+    x12 = x1-x2
+    y12 = y1-y2
+    x23 = x2-x3
+    y23 = y2-y3
+    x31 = x3-x1
+    y31 = y3-y1
+
+    den = abs(x12 * y23 - x23 * y12)
+    if abs(den) < 1e-5: return MAXINT
+    return hypot(float(x12), float(y12)) * hypot(float(x23), float(y23)) * hypot(float(x31), float(y31)) / 2 / den
+
+class Point:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+    def __str__(self): return "<%f,%f>" % (self.x, self.y)
+    def __sub__(self, other):
+        return Point(self.x - other.x, self.y - other.y)
+    def __add__(self, other):
+        return Point(self.x + other.x, self.y + other.y)
+    def __mul__(self, other):
+        return Point(self.x * other, self.y * other)
+    __rmul__ = __mul__
+    def cross(self, other):
+        return self.x * other.y - self.y * other.x
+    def dot(self, other):
+        return self.x * other.x + self.y * other.y
+    def mag(self):
+        return hypot(self.x, self.y)
+    def mag2(self):
+        return self.x**2 + self.y**2
+
+def cent1(x1,y1,x2,y2,x3,y3):
+    P1 = Point(x1,y1)
+    P2 = Point(x2,y2)
+    P3 = Point(x3,y3)
+
+    den = abs((P1-P2).cross(P2-P3))
+    if abs(den) < 1e-5: return MAXINT, MAXINT
+
+    alpha = (P2-P3).mag2() * (P1-P2).dot(P1-P3) / 2 / den / den
+    beta  = (P1-P3).mag2() * (P2-P1).dot(P2-P3) / 2 / den / den
+    gamma = (P1-P2).mag2() * (P3-P1).dot(P3-P2) / 2 / den / den
+
+    Pc = alpha * P1 + beta * P2 + gamma * P3
+    return Pc.x, Pc.y
+
+def arc_center(plane, p1, p2, p3):
+    x1, y1, z1 = p1
+    x2, y2, z2 = p2
+    x3, y3, z3 = p3
+
+    if plane == 17: return cent1(x1,y1,x2,y2,x3,y3)
+    if plane == 18: return cent1(x1,z1,x2,z2,x3,z3)
+    if plane == 19: return cent1(y1,z1,y2,z2,y3,z3)
+
+def arc_rad(plane, P1, P2, P3):
+    if plane is None: return MAXINT
+
+    x1, y1, z1 = P1
+    x2, y2, z2 = P2
+    x3, y3, z3 = P3
+
+    if plane == 17: return rad1(x1,y1,x2,y2,x3,y3)
+    if plane == 18: return rad1(x1,z1,x2,z2,x3,z3)
+    if plane == 19: return rad1(y1,z1,y2,z2,y3,z3)
+    return None, 0
+
+def get_pts(plane, x,y,z):
+    if plane == 17: return x,y
+    if plane == 18: return x,z
+    if plane == 19: return y,z
+
+def one_quadrant(plane, c, p1, p2, p3):
+    xc, yc = c
+    x1, y1 = get_pts(plane, p1[0],p1[1],p1[2])
+    x2, y2 = get_pts(plane, p2[0],p2[1],p2[2])
+    x3, y3 = get_pts(plane, p3[0],p3[1],p3[2])
+
+    def sign(x):
+        if abs(x) < 1e-5: return 0
+        if x < 0: return -1
+        return 1
+
+    signs = set((
+        (sign(x1-xc),sign(y1-yc)),
+        (sign(x2-xc),sign(y2-yc)),
+        (sign(x3-xc),sign(y3-yc))
+    ))
+
+    if len(signs) == 1: return True
+
+    if (1,1) in signs:
+        signs.discard((1,0))
+        signs.discard((0,1))
+    if (1,-1) in signs:
+        signs.discard((1,0))
+        signs.discard((0,-1))
+    if (-1,1) in signs:
+        signs.discard((-1,0))
+        signs.discard((0,1))
+    if (-1,-1) in signs:
+        signs.discard((-1,0))
+        signs.discard((0,-1))
+
+    if len(signs) == 1: return True
+
+def arc_dir(plane, c, p1, p2, p3):
+    xc, yc = c
+    x1, y1 = get_pts(plane, p1[0],p1[1],p1[2])
+    x2, y2 = get_pts(plane, p2[0],p2[1],p2[2])
+    x3, y3 = get_pts(plane, p3[0],p3[1],p3[2])
+
+    theta_start = atan2(y1-yc, x1-xc)
+    theta_mid = atan2(y2-yc, x2-xc)
+    theta_end = atan2(y3-yc, x3-xc)
+
+    if theta_mid < theta_start:
+        theta_mid = theta_mid + 2 * pi
+    while theta_end < theta_mid:
+        theta_end = theta_end + 2 * pi
+
+    return theta_end < 2 * pi
+
+def arc_fmt(plane, c1, c2, p1):
+    x, y, z = p1
+    if plane == 17: return "I%.4f J%.4f" % (c1-x, c2-y)
+    if plane == 18: return "I%.4f K%.4f" % (c1-x, c2-z)
+    if plane == 19: return "J%.4f K%.4f" % (c1-y, c2-z)
+
+"""
+   Perform Douglas-Peucker simplification on the path 'st' with the specified
+   tolerance.  The '_first' argument is for internal use only.
+
+   The Douglas-Peucker simplification algorithm finds a subset of the input points
+   whose path is never more than 'tolerance' away from the original input path.
+
+   If 'plane' is specified as 17, 18, or 19, it may find helical arcs in the given
+   plane in addition to lines.  Note that if there is movement in the plane
+   perpendicular to the arc, it will be distorted, so 'plane' should usually
+   be specified only when there is only movement on 2 axes
+"""
+
+def douglas(st, tolerance=.001, plane=None, _first=True):
+    if len(st) == 1:
+        yield "G1", st[0], None
+        return
+
+    l1 = st[0]
+    l2 = st[-1]
+
+    worst_dist = 0
+    worst = 0
+    min_rad = MAXINT
+    max_arc = -1
+
+    ps = st[0]
+    pe = st[-1]
+
+    for i, p in enumerate(st):
+        if p is l1 or p is l2: continue
+        dist = dist_lseg(l1, l2, p)
+        if dist > worst_dist:
+            worst = i
+            worst_dist = dist
+            rad = arc_rad(plane, ps, p, pe)
+            if rad < min_rad:
+                max_arc = i
+                min_rad = rad
+
+    worst_arc_dist = 0
+    if min_rad != MAXINT:
+        c1, c2 = arc_center(plane, ps, st[max_arc], pe)
+        lx, ly, lz = st[0]
+        if one_quadrant(plane, (c1, c2), ps, st[max_arc], pe):
+            for i, (x,y,z) in enumerate(st):
+                if plane == 17: dist = abs(hypot(c1-x, c2-y) - min_rad)
+                elif plane == 18: dist = abs(hypot(c1-x, c2-z) - min_rad)
+                elif plane == 19: dist = abs(hypot(c1-y, c2-z) - min_rad)
+                else: dist = MAXINT
+                if dist > worst_arc_dist: worst_arc_dist = dist
+
+                mx = (x+lx)/2
+                my = (y+ly)/2
+                mz = (z+lz)/2
+                if plane == 17: dist = abs(hypot(c1-mx, c2-my) - min_rad)
+                elif plane == 18: dist = abs(hypot(c1-mx, c2-mz) - min_rad)
+                elif plane == 19: dist = abs(hypot(c1-my, c2-mz) - min_rad)
+                else: dist = MAXINT
+                lx, ly, lz = x, y, z
+        else:
+            worst_arc_dist = MAXINT
+    else:
+        worst_arc_dist = MAXINT
+
+    if worst_arc_dist < tolerance and worst_arc_dist < worst_dist:
+        ccw = arc_dir(plane, (c1, c2), ps, st[max_arc], pe)
+        if plane == 18: ccw = not ccw
+        yield "G1", ps, None
+        if ccw:
+            yield "G3", st[-1], arc_fmt(plane, c1, c2, ps)
+        else:
+            yield "G2", st[-1], arc_fmt(plane, c1, c2, ps)
+    elif worst_dist > tolerance:
+        if _first: yield "G1", st[0], None
+        for i in douglas(st[:worst+1], tolerance, plane, False):
+            yield i
+        yield "G1", st[worst], None
+        for i in douglas(st[worst:], tolerance, plane, False):
+            yield i
+        if _first: yield "G1", st[-1], None
+    else:
+        if _first: yield "G1", st[0], None
+        if _first: yield "G1", st[-1], None
+
+# For creating rs274ngc files
+class Gcode:
+    def __init__(self, homeheight = 1.5, safetyheight = 0.04,
+                 tolerance=0.001, units="G20", header="", postscript="",
+                 target=lambda s: sys.stdout.write(s + "\n"),
+                 disable_arcs = False, rapid_feed = 25, cut_feed = 12,
+                 plunge_feed = 8, grbl_post = 0):
+
+        self.lastx = self.lasty = self.lastz = self.lasta = None
+        self.lastgcode = self.lastfeed = None
+        self.homeheight = homeheight
+        self.safetyheight = self.lastz = safetyheight
+        self.tolerance = tolerance
+        self.units = units
+        self.cuts = []
+        self.write = target
+        self.time = 0
+        self.plane = None
+        self.header = header
+        self.postscript = postscript
+        self.disable_arcs = disable_arcs
+        self.rapid_feed = rapid_feed
+        self.cut_feed = cut_feed
+        self.plunge_feed = plunge_feed
+        self.grbl_post = grbl_post
+
+    def set_plane(self, p):
+        if (not self.disable_arcs):
+            assert p in (17,18,19)
+            if p != self.plane:
+                self.plane = p
+                self.write("G%d" % p)
+
+    def g_comment(self,comment):
+        self.write("( %s )" %comment)
+
+    def begin(self):
+        if self.header=="":
+            self.write("G17 G90 M3 S3000 G40 G94")
+        else:
+            for line in self.header:
+                self.write(line)
+        self.write(self.units)
+        if not self.disable_arcs:
+            self.write("G91.1")
+
+        #self.write("G0 Z%.4f" % (self.safetyheight))
+        # without a F word in the first movement command GRBL raise an error
+        self.write("G0 Z%.3f F%.3f" % (self.safetyheight,self.rapid_feed))
+
+        """
+        If any 'cut' moves are stored up, send them to the simplification algorithm
+        and actually output them.
+
+        This function is usually used internally (e.g., when changing from a cut
+        to a rapid) but can be called manually as well.  For instance, when
+        a contouring program reaches the end of a row, it may be desirable to enforce
+        that the last 'cut' coordinate is actually in the output file, and it may
+        give better performance because this means that the simplification algorithm
+        will examine fewer points per run.
+
+        """
+
+    def flush(self,comment = ""):
+
+        if not self.cuts: return
+
+        self.g_comment("BF: %s" % (comment))
+
+        f_cnt = 0
+        for move, (x, y, z), cent in douglas(self.cuts, self.tolerance, self.plane):
+            if f_cnt == 0:
+                move_feed = self.plunge_feed
+                f_cnt = 1
+            else:
+                move_feed = self.cut_feed
+
+            if cent:
+                self.write("%s X%.4f Y%.4f Z%.4f %s" % (move, x, y, z, cent))
+                self.lastgcode = None
+                self.lastx = x
+                self.lasty = y
+                self.lastz = z
+            else:
+                self.move_common(x, y, z, gcode="G1",feed = move_feed)
+        self.cuts = []
+        self.g_comment("EF ")
+
+    def end(self):
+        #"""End the program"""
+        self.flush("end")
+        self.safety()
+        if self.postscript=="":
+            self.write("M2")
+        else:
+            self.write(self.postscript)
+
+    #Set exact path mode.  Note that unless self.tolerance is set to zero,
+    #the simplification algorithm may still skip over specified points."""
+    def exactpath(self):
+        self.write("G61")
+
+    # Set continuous mode.
+    def continuous(self, tolerance=0.0):
+
+        if tolerance > 0.0:
+            self.write("G64 P%.4f" % tolerance)
+        else:
+            self.write("G64")
+
+    def rapid(self, x=None, y=None, z=None, a=None):
+        #"Perform a rapid move to the specified coordinates"
+        self.flush("rp")
+        self.move_common(x, y, z, a, "G0",feed = self.rapid_feed)
+
+    def move_common(self, x=None, y=None, z=None, a=None, gcode="G0",feed = 1):
+        #"An internal function used for G0 and G1 moves"
+        gcodestring = xstring = ystring = zstring = astring = move_feed = ""
+        if x == None: x = self.lastx
+        if y == None: y = self.lasty
+        if z == None: z = self.lastz
+        if a == None: a = self.lasta
+        if x != self.lastx:
+                xstring = " X%.3f" % (x)
+                self.lastx = x
+        if y != self.lasty:
+                ystring = " Y%.3f" % (y)
+                self.lasty = y
+        if z != self.lastz:
+                zstring = " Z%.3f" % (z)
+                self.lastz = z
+        if a != self.lasta:
+                astring = " A%.3f" % (a)
+                self.lasta = a
+        if xstring == ystring == zstring == astring == "":
+            return
+
+        #print "Gcode = ",gcode,x,y,z
+        # let the Gcode word appear on the line otherwise GRBL raise an error
+        gcodestring = gcode
+
+#        #print feed,self.lastfeed
+        if feed != self.lastfeed:
+                self.lastfeed = feed
+                move_feed = " F%.3f" %(feed)
+
+        cmd = "".join([gcodestring, xstring, ystring, zstring, astring,move_feed])
+        self.write(cmd)
+
+    # Original Code
+    """
+        def move_common(self, x=None, y=None, z=None, a=None, gcode="G0",feed = 1):
+            #"An internal function used for G0 and G1 moves"
+            gcodestring = xstring = ystring = zstring = astring = move_feed = ""
+            if x == None: x = self.lastx
+            if y == None: y = self.lasty
+            if z == None: z = self.lastz
+            if a == None: a = self.lasta
+            if x != self.lastx:
+                    xstring = " X%.4f" % (x)
+                    self.lastx = x
+            if y != self.lasty:
+                    ystring = " Y%.4f" % (y)
+                    self.lasty = y
+            if z != self.lastz:
+                    zstring = " Z%.4f" % (z)
+                    self.lastz = z
+            if a != self.lasta:
+                    astring = " A%.4f" % (a)
+                    self.lasta = a
+            if xstring == ystring == zstring == astring == "":
+                return
+            print "Gcode = ",gcode
+            if gcode != self.lastgcode:
+                    gcodestring = gcode
+                    self.lastgcode = gcode
+
+            print "Gcode = ",x,y,z
+            #print feed,self.lastfeed
+            if feed != self.lastfeed:
+                    self.lastfeed = feed
+                    move_feed = " F%.3f" %(feed)
+
+            cmd = "".join([gcodestring, xstring, ystring, zstring, astring,move_feed])
+            self.write(cmd)
+    """
+
+    def set_feed(self, feed):
+        #"Set the feed rate to the given value"
+        self.flush("set_feed %.3f" % feed)
+        #self.write("F%.4f" % feed)
+
+    def cut(self, x=None, y=None, z=None):
+        #"Perform a cutting move at the specified feed rate to the specified coordinates"
+        if self.cuts:
+            lastx, lasty, lastz = self.cuts[-1]
+        else:
+            lastx, lasty, lastz = self.lastx, self.lasty, self.lastz
+        if x is None: x = lastx
+        if y is None: y = lasty
+        if z is None: z = lastz
+        self.cuts.append([x,y,z])
+
+    def home(self):
+        #"Go to the 'home' height at rapid speed"
+        self.flush("Home")
+        self.rapid(z=self.homeheight)
+
+    def safety(self):
+        #"Go to the 'safety' height at rapid speed"
+        self.flush()
+        self.rapid(z=self.safetyheight)
+
+
+########################################
+#             image-to-gcode           #
+#                                      #
+########################################
+
+epsilon = 1e-5
+
+def ball_tool(r,rad):
+    s = -sqrt(rad**2-r**2)
+    return s
+
+def endmill(r,dia, rh_offset=0.0):
+    return 0
+
+def vee_common(angle, rh_offset=0.0):
+    slope = tan(pi/2.0 - (angle / 2.0) * pi / 180.0)
+    def f(r, dia):
+        return r * slope
+    return f
+
+def make_tool_shape(f, wdia, resp, rh_offset=0.0):
+    # resp is pixel size
+    res = 1. / resp
+    wrad = wdia/2.0 + rh_offset
+    rad = int(ceil((wrad-resp/2.0)*res))
+    if rad < 1: rad = 1
+    dia = 2*rad+1
+
+    hdia = rad
+    l = []
+    for x in range(dia):
+        for y in range(dia):
+            r = hypot(x-hdia, y-hdia) * resp
+            if r < wrad:
+                z = f(r, wrad)
+                l.append(z)
+
+    TOOL = Image_Matrix_Numpy(dia,dia)
+    l = []
+    temp = []
+    for x in range(dia):
+        temp.append([])
+        for y in range(dia):
+            r = hypot(x-hdia, y-hdia) * resp
+            if r < wrad:
+                z = f(r, wrad)
+                l.append(z)
+                temp[x].append(float(z))
+            else:
+                temp[x].append(1e100000)
+    TOOL.From_List(temp)
+    TOOL.minus(TOOL.min()+rh_offset)
+    return TOOL
+
+def amax(seq):
+    res = 0
+    for i in seq:
+        if abs(i) > abs(res): res = i
+    return res
+
+def group_by_sign(seq, slop=sin(pi/18), key=lambda x:x):
+    sign = None
+    subseq = []
+    for i in seq:
+        ki = key(i)
+        if sign is None:
+            subseq.append(i)
+            if ki != 0:
+                sign = ki / abs(ki)
+        else:
+            subseq.append(i)
+            if sign * ki < -slop:
+                sign = ki / abs(ki)
+                yield subseq
+                subseq = [i]
+    if subseq: yield subseq
+
+class Convert_Scan_Alternating:
+    def __init__(self):
+        self.st = 0
+
+    def __call__(self, primary, items):
+        st = self.st = self.st + 1
+        if st % 2: items.reverse()
+        if st == 1: yield True, items
+        else: yield False, items
+
+    def reset(self):
+        self.st = 0
+
+class Convert_Scan_Increasing:
+    def __call__(self, primary, items):
+        yield True, items
+
+    def reset(self):
+        pass
+
+class Convert_Scan_Decreasing:
+    def __call__(self, primary, items):
+        items.reverse()
+        yield True, items
+
+    def reset(self):
+        pass
+
+class Convert_Scan_Upmill:
+    def __init__(self, slop = sin(pi / 18)):
+        self.slop = slop
+
+    def __call__(self, primary, items):
+        for span in group_by_sign(items, self.slop, operator.itemgetter(2)):
+            if amax([it[2] for it in span]) < 0:
+                span.reverse()
+            yield True, span
+
+    def reset(self):
+        pass
+
+class Convert_Scan_Downmill:
+    def __init__(self, slop = sin(pi / 18)):
+        self.slop = slop
+
+    def __call__(self, primary, items):
+        for span in group_by_sign(items, self.slop, operator.itemgetter(2)):
+            if amax([it[2] for it in span]) > 0:
+                span.reverse()
+            yield True, span
+
+    def reset(self):
+        pass
+
+class Reduce_Scan_Lace:
+    def __init__(self, converter, slope, keep):
+        self.converter = converter
+        self.slope = slope
+        self.keep = keep
+
+    def __call__(self, primary, items):
+        slope = self.slope
+        keep = self.keep
+        if primary:
+            idx = 3
+            test = operator.le
+        else:
+            idx = 2
+            test = operator.ge
+
+        def bos(j):
+            return j - j % keep
+
+        def eos(j):
+            if j % keep == 0: return j
+            return j + keep - j%keep
+
+        for i, (flag, span) in enumerate(self.converter(primary, items)):
+            subspan = []
+            a = None
+            for i, si in enumerate(span):
+                ki = si[idx]
+                if a is None:
+                    if test(abs(ki), slope):
+                        a = b = i
+                else:
+                    if test(abs(ki), slope):
+                        b = i
+                    else:
+                        if i - b < keep: continue
+                        yield True, span[bos(a):eos(b+1)]
+                        a = None
+            if a is not None:
+                yield True, span[a:]
+
+    def reset(self):
+        self.converter.reset()
+
+
+class Reduce_Scan_Lace_new:
+    def __init__(self, converter, depth, keep):
+        self.converter = converter
+        self.depth = depth
+        self.keep = keep
+
+    def __call__(self, primary, items):
+        keep = self.keep
+        max_z_cut = self.depth  # set a max z value to cut
+
+        def bos(j):
+            return j - j % keep
+
+        def eos(j):
+            if j % keep == 0: return j
+            return j + keep - j%keep
+
+        for i, (flag, span) in enumerate(self.converter(primary, items)):
+            subspan = []
+            a = None
+            for i, si in enumerate(span):
+                ki = si[1]         # This is (x,y,z)
+                z_value   = ki[2]  # Get the z value from ki
+                if a is None:
+                    if z_value < max_z_cut:
+                        a = b = i
+                else:
+                    if z_value < max_z_cut:
+                        b = i
+                    else:
+                        if i - b < keep: continue
+                        yield True, span[bos(a):eos(b+1)]
+                        a = None
+            if a is not None:
+                yield True, span[a:]
+
+    def reset(self):
+        self.converter.reset()
+
+unitcodes = ['G20', 'G21']
+convert_makers = [ Convert_Scan_Increasing, Convert_Scan_Decreasing, Convert_Scan_Alternating, Convert_Scan_Upmill, Convert_Scan_Downmill ]
+
+def progress(a, b, START_TIME, GUI=[]):
+    CUR_PCT = (a*100./b)
+    if CUR_PCT > 100.0:
+        CUR_PCT = 100.0
+    MIN_REMAIN =( time()-START_TIME )/60 * (100-CUR_PCT)/CUR_PCT
+    MIN_TOTAL = 100.0/CUR_PCT * ( time()-START_TIME )/60
+    message = '%.1f %% ( %.1f Minutes Remaining | %.1f Minutes Total )' %( CUR_PCT, MIN_REMAIN, MIN_TOTAL )
+    try:
+        GUI.statusMessage.set(message)
+    except:
+        fmessage(message)
+
+class Converter:
+    def __init__(self, BIG, image, units, tool_shape, pixelsize, pixelstep, \
+                 safetyheight, tolerance, feed, convert_rows, convert_cols, \
+                 cols_first_flag, border, entry_cut, roughing_delta, \
+                 roughing_feed, xoffset, yoffset, splitstep, header, \
+                 postscript, edge_offset, disable_arcs, \
+                 rapid_feed, cut_feed, plunge_feed, grbl_post):
+
+        self.BIG = BIG
+        self.image = image
+        self.units = units
+        self.tool_shape = tool_shape
+        self.pixelsize = pixelsize
+        self.safetyheight = safetyheight
+        self.tolerance = tolerance
+        self.base_feed = feed
+        self.convert_rows = convert_rows
+        self.convert_cols = convert_cols
+        self.cols_first_flag = cols_first_flag
+        self.entry_cut = entry_cut
+        self.roughing_delta = roughing_delta
+        self.roughing_feed = roughing_feed
+        self.header = header
+        self.postscript = postscript
+        self.border = border
+        self.edge_offset = edge_offset
+        self.disable_arcs = disable_arcs
+        self.rapid_feed = rapid_feed
+        self.cut_feed = cut_feed
+        self.plunge_feed = plunge_feed
+        self.grbl_post = grbl_post
+
+        self.xoffset = xoffset
+        self.yoffset = yoffset
+
+        # Split step stuff
+        splitpixels = 0
+        if splitstep > epsilon:
+            pixelstep   = int(floor(pixelstep * splitstep * 2))
+            splitpixels = int(floor(pixelstep * splitstep))
+        self.pixelstep   = pixelstep
+        self.splitpixels = splitpixels
+
+        self.cache = {}
+
+        w, h = self.w, self.h = image.shape
+        self.h1 = h
+        self.w1 = w
+
+        ### Percent complete stuff ###
+        self.START_TIME=time()
+        row_cnt=0
+        cnt_border = 0
+        if self.convert_rows != None:
+            row_cnt = ceil( self.w1 / pixelstep) + 2
+        col_cnt = 0
+        if self.convert_cols != None:
+            col_cnt = ceil( self.h1 / pixelstep) + 2
+        if self.roughing_delta != 0:
+            cnt_mult = ceil(self.image.min() / -self.roughing_delta) + 1
+        else:
+            cnt_mult = 1
+        if self.convert_cols != None or self.convert_rows != None:
+            cnt_border = 2
+        self.cnt_total = (row_cnt + col_cnt + cnt_border )* cnt_mult
+        self.cnt = 0.0
+
+    def one_pass(self,c_pass=1, height = 0):
+        g = self.g
+        msg = "Pass %s  height %.3f" %(c_pass,height)
+
+        g.g_comment(msg)
+        fmessage(msg)
+
+        g.set_feed(self.feed)
+
+        if self.convert_cols and self.cols_first_flag:
+            self.g.set_plane(19)
+            self.mill_cols(self.convert_cols, True)
+            if self.convert_rows: g.safety()
+
+        if self.convert_rows:
+            self.g.set_plane(18)
+            self.mill_rows(self.convert_rows, not self.cols_first_flag,height)
+
+        if self.convert_cols and not self.cols_first_flag:
+            self.g.set_plane(19)
+            if self.convert_rows: g.safety()
+            self.mill_cols(self.convert_cols, not self.convert_rows)
+
+        g.safety()
+
+        msg= "mb"
+
+        g.g_comment(msg)
+        fmessage(msg)
+
+        ## mill border ##
+        if self.convert_cols:
+            self.convert_cols.reset()
+        if self.convert_rows:
+            self.convert_rows.reset()
+
+        step_save = self.pixelstep
+        self.pixelstep = max(self.w1, self.h1) + 1
+        if self.border == 1 and not self.convert_rows:
+            if self.convert_cols:
+                self.g.set_plane(18)
+                self.mill_rows(self.convert_cols, True,height)
+                g.safety()
+
+        if self.border == 1 and not self.convert_cols:
+            if self.convert_rows:
+                self.g.set_plane(19)
+                self.mill_cols(self.convert_rows, True)
+                g.safety()
+        self.pixelstep = step_save
+
+        if self.convert_cols:
+            self.convert_cols.reset()
+        if self.convert_rows:
+            self.convert_rows.reset()
+
+        g.safety()
+
+    def convert(self):
+        output_gcode = []
+        self.g = g = Gcode(safetyheight=self.safetyheight,
+                           tolerance=self.tolerance,
+                           units=self.units,
+                           header=self.header,
+                           postscript=self.postscript,
+                           target=lambda s: output_gcode.append(s),
+                           disable_arcs = self.disable_arcs,
+                           rapid_feed = self.rapid_feed,
+                           cut_feed = self.cut_feed,
+                           plunge_feed = self.plunge_feed,
+                           grbl_post = self.grbl_post)
+        g.begin()
+
+        if self.grbl_post > 0:
+            pass
+        else:
+            g.continuous(self.tolerance)
+
+        g.safety()
+
+        if self.roughing_delta:
+            c_pass = 0
+
+            self.feed = self.roughing_feed
+            r = -self.roughing_delta
+            m = self.image.min()
+            while r > m:
+                c_pass += 1
+                self.rd = r
+                self.one_pass(c_pass,r)
+                r = r - self.roughing_delta
+            if r < m + epsilon:
+                c_pass += 1
+                self.rd = m
+                self.one_pass(c_pass,r)
+
+        else:
+            self.feed = self.base_feed
+            self.rd = self.image.min()
+            self.one_pass(0,0)
+
+        g.end()
+        return output_gcode
+
+    def get_z(self, x, y):
+        try:
+            return min(0, max(self.rd, self.cache[x,y]))
+        except KeyError:
+            self.cache[x,y] = d = self.image.height_calc(x,y,self.tool_shape)
+            return min(0.0, max(self.rd, d))
+
+    def get_dz_dy(self, x, y):
+        y1 = max(0, y-1)
+        y2 = min(self.image.shape[0]-1, y+1)
+        dy = self.pixelsize * (y2-y1)
+        return (self.get_z(x, y2) - self.get_z(x, y1)) / dy
+
+    def get_dz_dx(self, x, y):
+        x1 = max(0, x-1)
+        x2 = min(self.image.shape[1]-1, x+1)
+        dx = self.pixelsize * (x2-x1)
+        return (self.get_z(x2, y) - self.get_z(x1, y)) / dx
+
+    def frange(self,start, stop, step):
+        out = []
+        i = start
+        while i < stop:
+            out.append(i)
+            i += step
+        return out
+
+    def mill_rows(self, convert_scan, primary,ph = 0):
+        global STOP_CALC
+        print convert_scan
+        print primary
+        print ph
+
+        w1 = self.w1
+        h1 = self.h1
+        pixelsize = self.pixelsize
+        pixelstep = self.pixelstep
+        pixel_offset = int(ceil(self.edge_offset / pixelsize))
+
+        jrange = self.frange(self.splitpixels+pixel_offset, w1-pixel_offset, pixelstep)
+
+        if jrange[0] != pixel_offset:
+            jrange.insert(0,pixel_offset)
+
+        if w1-1-pixel_offset not in jrange:
+            jrange.append(w1-1-pixel_offset)
+
+        irange = range(pixel_offset,h1-pixel_offset)
+
+        riga = 0
+
+        for j in jrange:
+            self.cnt = self.cnt+1
+            riga = riga + 1
+            progress(self.cnt, self.cnt_total, self.START_TIME, self.BIG )
+            y = (w1-j-1) * pixelsize + self.yoffset
+            scan = []
+
+            for i in irange:
+                self.BIG.update()
+                if STOP_CALC: return
+                x = i * pixelsize + self.xoffset
+                milldata = (i, (x, y, self.get_z(i, j)),
+                            self.get_dz_dx(i, j), self.get_dz_dy(i, j))
+                scan.append(milldata)
+
+            # mill the rows
+            msg =  " row = %g " %(riga)
+            fmessage(msg)
+            self.g.g_comment(msg)
+
+            for flag, points in convert_scan(primary, scan):
+                if flag:
+                    self.entry_cut(self, points[0][0], j, points)
+                for p in points:
+                    if p[1][2] > ph:
+                        print "j point = ",j, p[1],ph
+                    self.g.cut(*p[1])
+            self.g.flush("mr")
+
+
+    def mill_cols(self, convert_scan, primary):
+        global STOP_CALC
+        w1 = self.w1
+        h1 = self.h1
+        pixelsize = self.pixelsize
+        pixelstep = self.pixelstep
+        pixel_offset = int(ceil(self.edge_offset / pixelsize))
+        jrange = self.frange(self.splitpixels+pixel_offset, h1-pixel_offset, pixelstep)
+        if jrange[0] != pixel_offset: jrange.insert(0,pixel_offset)
+        if h1-1-pixel_offset not in jrange: jrange.append(h1-1-pixel_offset)
+
+        irange = range(pixel_offset,w1-pixel_offset)
+
+        if h1-1-pixel_offset not in jrange: jrange.append(h1-1-pixel_offset)
+        jrange.reverse()
+
+        for j in jrange:
+            self.cnt = self.cnt+1
+            progress(self.cnt, self.cnt_total, self.START_TIME, self.BIG )
+            x = j * pixelsize + self.xoffset
+            scan = []
+            for i in irange:
+                self.BIG.update()
+                if STOP_CALC: return
+                y = (w1-i-1) * pixelsize + self.yoffset
+                milldata = (i, (x, y, self.get_z(j, i)),
+                            self.get_dz_dy(j, i), self.get_dz_dx(j, i))
+                scan.append(milldata)
+            for flag, points in convert_scan(primary, scan):
+                if flag:
+                    self.entry_cut(self, j, points[0][0], points)
+                for p in points:
+                    self.g.cut(*p[1])
+            self.g.flush("mc")
+
+def convert(*args, **kw):
+    return Converter(*args, **kw).convert()
+
+class SimpleEntryCut:
+    def __init__(self, feed):
+        self.feed = feed
+
+    def __call__(self, conv, i0, j0, points):
+        p = points[0][1]
+
+        if self.feed:
+            conv.g.set_feed(self.feed)
+        conv.g.safety()
+        conv.g.rapid(p[0], p[1])
+
+        if self.feed:
+            conv.g.set_feed(conv.feed)
+
+# Calculate the portion of the arc to do so that none is above the
+# safety height (that's just silly)
+def circ(r,b):
+    z = r**2 - (r-b)**2
+    if z < 0: z = 0
+    return z**.5
+
+class ArcEntryCut:
+    def __init__(self, feed, max_radius):
+        self.feed = feed
+        self.max_radius = max_radius
+
+    def __call__(self, conv, i0, j0, points):
+        if len(points) < 2:
+            p = points[0][1]
+            if self.feed:
+                conv.g.set_feed(self.feed)
+            conv.g.safety()
+            conv.g.rapid(p[0], p[1])
+            if self.feed:
+                conv.g.set_feed(conv.feed)
+            return
+
+        p1 = points[0][1]
+        p2 = points[1][1]
+        z0 = p1[2]
+
+        lim = int(ceil(self.max_radius / conv.pixelsize))
+        r = range(1, lim)
+
+        if self.feed:
+            conv.g.set_feed(self.feed)
+        conv.g.safety()
+
+        x, y, z = p1
+
+        pixelsize = conv.pixelsize
+
+        cx = cmp(p1[0], p2[0])
+        cy = cmp(p1[1], p2[1])
+
+        radius = self.max_radius
+
+        if cx != 0:
+            h1 = conv.h1
+            for di in r:
+                dx = di * pixelsize
+                i = i0 + cx * di
+                if i < 0 or i >= h1: break
+                z1 = conv.get_z(i, j0)
+                dz = (z1 - z0)
+                if dz <= 0: continue
+                if dz > dx:
+                    conv.g.write("(case 1)")
+                    radius = dx
+                    break
+                rad1 = (dx * dx / dz + dz) / 2
+                if rad1 < radius:
+                    radius = rad1
+                if dx > radius:
+                    break
+
+            z1 = min(p1[2] + radius, conv.safetyheight)
+
+            x1 = p1[0] + cx * circ(radius, z1 - p1[2])
+            conv.g.rapid(x1, p1[1])
+            conv.g.cut(z=z1)
+
+            I = - cx * circ(radius, z1 - p1[2])
+            K = (p1[2] + radius) - z1
+
+            conv.g.flush("AEC"); conv.g.lastgcode = None
+            if cx > 0:
+                #conv.g.write("G3 X%f Z%f R%f" % (p1[0], p1[2], radius)) #G3
+                conv.g.write("G3 X%f Z%f I%f K%f" % (p1[0], p1[2], I, K))
+            else:
+                #conv.g.write("G2 X%f Z%f R%f" % (p1[0], p1[2], radius)) #G2
+                conv.g.write("G2 X%f Z%f I%f K%f" % (p1[0], p1[2], I, K))
+
+            conv.g.lastx = p1[0]
+            conv.g.lasty = p1[1]
+            conv.g.lastz = p1[2]
+        else:
+            w1 = conv.w1
+            for dj in r:
+                dy = dj * pixelsize
+                j = j0 - cy * dj
+                if j < 0 or j >= w1: break
+                z1 = conv.get_z(i0, j)
+                dz = (z1 - z0)
+                if dz <= 0: continue
+                if dz > dy:
+                    radius = dy
+                    break
+                rad1 = (dy * dy / dz + dz) / 2
+                if rad1 < radius: radius = rad1
+                if dy > radius: break
+
+            z1 = min(p1[2] + radius, conv.safetyheight)
+            y1 = p1[1] + cy * circ(radius, z1 - p1[2])
+            conv.g.rapid(p1[0], y1)
+            conv.g.cut(z=z1)
+
+            J =  -cy * circ(radius, z1 - p1[2])
+            K = (p1[2] + radius) - z1
+
+            conv.g.flush("AEC"); conv.g.lastgcode = None
+            if cy > 0:
+                #conv.g.write("G2 Y%f Z%f R%f" % (p1[1], p1[2], radius)) #G2
+                conv.g.write("G2 Y%f Z%f J%f K%f" % (p1[1], p1[2], J, K))
+            else:
+                #conv.g.write("G3 Y%f Z%f R%f" % (p1[1], p1[2], radius)) #G3
+                conv.g.write("G3 Y%f Z%f J%f K%f" % (p1[1], p1[2], J, K))
+            conv.g.lastx = p1[0]
+            conv.g.lasty = p1[1]
+            conv.g.lastz = p1[2]
+        if self.feed:
+            conv.g.set_feed(conv.feed)
+
+
+class Image_Matrix_Numpy:
+    def __init__(self, width=2, height=2):
+        self.width  = width
+        self.height = height
+        self.matrix = numarray.zeros((width, height), 'Float32')
+        self.shape  = [width, height]
+        self.t_offset = 0
+
+    def __call__(self,i,j):
+        return self.matrix[i+self.t_offset,j+self.t_offset]
+
+    def Assign(self,i,j,val):
+        fval=float(val)
+        self.matrix[i+self.t_offset,j+self.t_offset]=fval
+
+    def From_List(self,input_list):
+        s = len(input_list)
+        self.width  = s
+        self.height = s
+
+        self.matrix = numarray.zeros((s, s), 'Float32')
+        for x in range(s):
+            for y in range(s):
+                self.matrix[x, y] = float(input_list[x][y])
+
+    def FromImage(self, im, pil_format):
+        global STOP_CALC
+        self.matrix = []
+
+        if pil_format:
+            him,wim = im.size
+            self.matrix = numarray.zeros((wim, him), 'Float32')
+            for i in range(0, wim):
+                for j in range(0, him):
+                    pix = im.getpixel((j, i))
+                    self.matrix[i, j] = float(pix)
+        else:
+            him = im.width()
+            wim = im.height()
+            self.matrix = numarray.zeros((wim, him), 'Float32')
+            for i in range(0, wim):
+                for j in range(0, him):
+                    try:    pix = im.get(j,i).split()
+                    except: pix = im.get(j,i)
+                    self.matrix[i, j] = float(pix[0])
+
+        self.width  = wim
+        self.height = him
+        self.shape  = [wim, him]
+        self.t_offset = 0
+
+    def pad_w_zeros(self, tool):
+        ts = tool.width
+        self.t_offset = (ts-1)/2
+        to = self.t_offset
+
+        w, h = self.shape
+        w1 = w + ts-1
+        h1 = h + ts-1
+        temp = numarray.zeros((w1, h1), 'Float32')
+        for j in range(0, w1):
+            for i in range(0, h1):
+                temp[j,i] = -1e1000000
+        temp[to:to+w, to:to+h] = self.matrix
+        self.matrix = temp
+
+    def height_calc(self, x, y, tool):
+        to = self.t_offset
+        ts = tool.width
+        d = -1e100000
+        m1 = self.matrix[y:y+ts, x:x+ts]
+        d = (m1 - tool.matrix).max()
+        return d
+
+    def min(self):
+        return self.matrix[self.t_offset:self.t_offset+self.width,
+                              self.t_offset:self.t_offset+self.height].min()
+    def max(self):
+        return self.matrix[self.t_offset:self.t_offset+self.width,
+                              self.t_offset:self.t_offset+self.height].max()
+    def mult(self, val):
+        self.matrix = self.matrix * float(val)
+
+    def minus(self, val):
+        self.matrix = self.matrix - float(val)
+
+######################################################################
+#    Function for outputting messages to different locations         #
+#    depending on what options are enabled                           #
+######################################################################
+
+
+def fmessage(text, newline=True):
+    global QUIET
+    if not QUIET:
+        if newline == True:
+            try:
+                sys.stdout.write(text)
+                sys.stdout.write("\n")
+            except:
+                pass
+        else:
+            try:
+                sys.stdout.write(text)
+            except:
+                pass
+
+def message_box(title, message):
+    if VERSION == 3:
+        tkinter.messagebox.showinfo(title, message)
+    else:
+        tkMessageBox.showinfo(title, message)
+        pass
+
+def message_ask_ok_cancel(title, mess):
+    if VERSION == 3:
+        result = tkinter.messagebox.askokcancel(title, mess)
+    else:
+        result = tkMessageBox.askokcancel(title, mess)
+    return result
+
+########################################
+#    Startup Application               #
+########################################
+
+
+try:
+    from PIL import Image
+    from PIL import ImageTk
+    from PIL import ImageOps
+    try:
+        from PIL.Image import core as _imaging # for debian jessie
+    except:
+        import _imaging # for other distro
+except:
+    fmessage("Unable to load PIL, check the installation")
+        
+try:
+    try:
+        import numpy.numarray as numarray
+        import numpy.core
+        olderr = numpy.core.seterr(divide='ignore')
+        plus_inf = (numarray.array((1.,))/0.)[0]
+        numpy.core.seterr(**olderr)
+    except ImportError:
+        import numarray, numarray.ieeespecial
+        plus_inf = numarray.ieeespecial.inf
+except:
+    fmessage("Unable to load Numpy, check the installation.")
+
+root = Tk()
+app = Application(root)
+app.master.title(p_name + " - V " + version)
+app.master.iconname(p_name)
+app.master.minsize(780, 540)
+
+
+try: #Attempt to create temporary icon bitmap file
+    f = open(p_name +"_icon", 'w')
+    f.write("#define " + p_name + "_icon_width 16\n")
+    f.write("#define " + p_name +"_icon_height 16\n")
+    f.write("static unsigned char "+ p_name +"_icon_bits[] = {\n")
+    f.write("   0x3f, 0xfc, 0x1f, 0xf8, 0xcf, 0xf3, 0x6f, 0xe4, 0x6f, 0xed, 0xcf, 0xe5,\n")
+    f.write("   0x1f, 0xf4, 0xfb, 0xf3, 0x73, 0x98, 0x47, 0xce, 0x0f, 0xe0, 0x3f, 0xf8,\n")
+    f.write("   0x7f, 0xfe, 0x3f, 0xfc, 0x9f, 0xf9, 0xcf, 0xf3 };\n")
+    f.close()
+    app.master.iconbitmap("@" + p_name +"_icon")
+    os.remove("" + p_name +"_icon")
+except:
+    fmessage("Unable to create temporary icon file.")
+
+root.mainloop()
