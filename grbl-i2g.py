@@ -3,7 +3,7 @@
     grbl-i2g G-Code Generator
     An heavily modified version of dmap2gcode by Scorch
     Suited for using with GRBL CNC controller, it uses PIL and Numpy by default
-    and has no code to integrate into linuxcnc.   
+    and has no code to integrate into linuxcnc.
 
     Copyright (C) <2015> Onekk
     Source was used from the following works:
@@ -11,7 +11,7 @@
         image-to-gcode.py   2006 Jeff Epler
         Author.py(linuxcnc) 2007 Jeff Epler  jepler@unpythonic.net
         dmap2gcode.py       2015 Scorch
-        
+
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation, either version 3 of the License, or
@@ -31,13 +31,16 @@
       original version.
     - Removed the options for not using PIL and Numpy
     - Removed all AXIS reference (we use it on GRBL not in LinuxCNC)
-    - Added a "Save Configuration" menu item 
+    - Added a "Save Configuration" menu item
 
 """
 version = '0.01'
 p_name = "grbl-i2g"
-
-
+#Setting QUIET to True will stop almost all console messages
+QUIET = False
+GC_DEBUG = 1 # 0 = to avoid debug output - 1 for debug
+STOP_CALC = 0
+DEBUG_CALC = 1 # 0 = to avoid debug output - 1 for debug 
 import sys
 VERSION = sys.version_info[0]
 
@@ -45,13 +48,13 @@ if sys.platform.startswith('win32'):
     config_file = "." + p_name + "rc"
 elif sys.platform.startswith('linux'):
     config_file = p_name + ".ngc"
-            
+
 if VERSION == 3:
     from tkinter import *
     from tkinter.filedialog import *
     import tkinter.messagebox
     MAXINT = sys.maxsize
-    
+
 else:
     from Tkinter import *
     from tkFileDialog import *
@@ -75,11 +78,11 @@ from PIL import Image
 from PIL import ImageTk
 from PIL import ImageOps
 try:
-  # this is valid for distro derivated from Debian (Debian Ubuntu, Linux Mint) 
-  from PIL.Image import core as _imaging 
+  # this is valid for distro derivated from Debian (Debian Ubuntu, Linux Mint)
+  from PIL.Image import core as _imaging
 except:
     # for other distro
-    import _imaging 
+    import _imaging
 
 try:
     import numpy.numarray as numarray
@@ -91,9 +94,7 @@ except ImportError:
     import numarray, numarray.ieeespecial
     plus_inf = numarray.ieeespecial.inf
 
-#Setting QUIET to True will stop almost all console messages
-QUIET = False
-STOP_CALC = 0
+
 
 class Application(Frame):
     def __init__(self, master):
@@ -105,7 +106,7 @@ class Application(Frame):
         self.master = master
         self.x = -1
         self.y = -1
-                
+
         self.createWidgets()
 
     def createWidgets(self):
@@ -127,7 +128,7 @@ class Application(Frame):
         self.cutperim = BooleanVar()
         self.no_arcs = BooleanVar()
         self.grbl_flag = BooleanVar()
-        
+
         self.origin = StringVar()
         self.yscale = StringVar()
         self.Xscale = StringVar()
@@ -170,7 +171,7 @@ class Application(Frame):
         #  if you want to change a default setting          #
         #  this is the place to do it                       #
         #####################################################
-        
+
         self.show_axis.set(1)
         self.invert.set(0)
         self.normalize.set(0)
@@ -190,14 +191,14 @@ class Application(Frame):
         self.p_feed.set("250")
         self.stepover.set("0.04")
         self.z_cut.set("-10.00")
-        self.z_safe.set("5")       
+        self.z_safe.set("5")
         self.dia.set("0.80")
         self.scanpat.set("Rows")
-        self.scandir.set("Positive")    # Options are "Alternating", 
+        self.scandir.set("Positive")    # Options are "Alternating",
                                         #     "Positive"   , "Negative",
                                         #     "Up Mill", "Down Mill"
-                                        
-        self.rough_tool.set("Flat")     # Options are "Ball", "Flat", "V"                                
+
+        self.rough_tool.set("Flat")     # Options are "Ball", "Flat", "V"
         self.rough_v_angle.set("45")
         self.rough_r_feed.set("1500.00")
         self.rough_p_feed.set("250.00")
@@ -206,9 +207,9 @@ class Application(Frame):
         self.rough_offset.set("0.02")
         self.rough_dia.set("3.00")
         self.rough_scanpat.set("Rows")
-        self.rough_scandir.set("Positive")  # Options are "Alternating", 
+        self.rough_scandir.set("Positive")  # Options are "Alternating",
                                             #   "Positive"   , "Negative",
-                                            #   "Up Mill", "Down Mill"        
+                                            #   "Up Mill", "Down Mill"
 
         self.origin.set("Default")      # Options are "Default",
                                         # "Top-Left", "Top-Center", "Top-Right",
@@ -221,17 +222,17 @@ class Application(Frame):
         self.lace_bound.set("None")     # Options "Full", "None", "??"
         self.cangle.set("45.0")
         self.tolerance.set("0.001")
-        self.splitstep.set("0")        # Options 
+        self.splitstep.set("0")        # Options
 
 
         self.z1_cut = "-100.00"
 
         self.NGC_FILE     = (os.path.expanduser("~")+"/None")
         self.IMAGE_FILE   = (os.path.expanduser("~")+"/None")
-        
+
         self.aspect_ratio =  0
         self.SCALE = 1
-        
+
         self.gcode = []
         self.segID = []
 
@@ -240,7 +241,7 @@ class Application(Frame):
         self.panx = 0
         self.lastx = 0
         self.lasty = 0
-        
+
         # Derived variables
         if self.units.get() == 'in':
             self.funits.set('in/min')
@@ -298,10 +299,10 @@ class Application(Frame):
         # M2 ; End Program                                                     #
         ########################################################################
         self.gpost.set("M5 M9 M2")
-        
+
         self.statusMessage = StringVar()
         self.statusMessage.set("Welcome to " + p_name)
-        
+
         ##########################################################################
         ###                     END INITILIZING VARIABLES                      ###
         ##########################################################################
@@ -310,7 +311,7 @@ class Application(Frame):
         self.statusbar = Label(self.master, textvariable=self.statusMessage, \
                                    bd=1, relief=SUNKEN , height=1)
         self.statusbar.pack(anchor=SW, fill=X, side=BOTTOM)
-        
+
 
         # Buttons
         self.Save_Button = Button(self.master,text="Save G-Code",command=self.menu_File_Save_G_Code_File_Finish)
@@ -347,7 +348,7 @@ class Application(Frame):
         self.Label_PixSize = Label(self.master,text="Pixel Size", anchor=CENTER)
         self.Label_PixSize_u = Label(self.master,textvariable=self.units, anchor=W)
         self.Label_PixSize_val = Label(self.master,textvariable=self.pixsize, anchor=W)
-        
+
         self.Label_pos_orient = Label(self.master,text="Image Properties:",\
                                           anchor=W)
 
@@ -363,7 +364,7 @@ class Application(Frame):
                                             "Bot-Center",
                                             "Bot-Right",
                                             "Default", command=self.Recalculate_RQD_Click)
-        
+
         #Radio Button
         self.Label_Invert_Color_FALSE = Label(self.master,text="Depth Color")
         self.Radio_Invert_Color_FALSE = Radiobutton(self.master,text="Black", value=False,
@@ -387,7 +388,7 @@ class Application(Frame):
         self.ROUGH_sep2 = Frame(self.master, height=2, bd=1, relief=SUNKEN)
         self.ROUGH_sep3 = Frame(self.master, height=2, bd=1, relief=SUNKEN)
         self.ROUGH_sep4 = Frame(self.master, height=2, bd=1, relief=SUNKEN)
-                
+
         self.Label_CutTop = Label(self.master,text="Cut Top Surface")
         self.CB_CutTop = Checkbutton(self.master,text=" ", \
                                               anchor=W, command=self.Set_Input_States)
@@ -398,7 +399,7 @@ class Application(Frame):
         self.Entry_Toptol = Entry(self.master,width="15")
         self.Entry_Toptol.configure(textvariable=self.toptol)
         self.toptol.trace_variable("w", self.Entry_Toptol_Callback)
- 
+
         # End Left Column #
 
         # Right Column #
@@ -414,7 +415,7 @@ class Application(Frame):
         self.Label_Tool      = Label(self.master,text="Tool End", anchor=CENTER )
         self.Tool_OptionMenu = OptionMenu(root, self.tool, "Ball","V","Flat",\
                                                command=self.Set_Input_States_Event)
-                
+
         self.Label_Vangle = Label(self.master,text="V-Bit Angle", anchor=CENTER )
         self.Entry_Vangle = Entry(self.master,width="15")
         self.Entry_Vangle.configure(textvariable=self.v_angle)
@@ -435,7 +436,7 @@ class Application(Frame):
         self.Label_Scandir      = Label(self.master,text="Scan Direction", anchor=CENTER )
         self.ScanDir_OptionMenu = OptionMenu(root, self.scandir, "Alternating", "Positive",
                                             "Negative", "Up Mill", "Down Mill")
-        
+
         self.Label_Feed = Label(self.master,text="Feed Rate")
         self.Label_Feed_u = Label(self.master,textvariable=self.funits, anchor=W)
         self.Entry_Feed = Entry(self.master,width="15")
@@ -469,24 +470,24 @@ class Application(Frame):
         self.Entry_Zcut = Entry(self.master,width="15")
         self.Entry_Zcut.configure(textvariable=self.z_cut)
         self.Entry_Zcut.bind('<Return>', self.Recalculate_Click)
-        self.z_cut.trace_variable("w", self.Entry_Zcut_Callback)      
+        self.z_cut.trace_variable("w", self.Entry_Zcut_Callback)
         # End Right Column #
-        
+
         # Third column
         self.ROUGH_Label_tool_opt = Label(self.master,text="Roughing Tool Properties:", anchor=W)
         self.ROUGH_Label_Tool = Label(self.master,text="R. Tool End", anchor=CENTER )
         self.rough_tool_OptionMenu = OptionMenu(self.master, self.rough_tool,
                                                 "Ball","V","Flat",
-                                               command=self.Set_Input_States_Event_ROUGH)        
-        
-        
+                                               command=self.Set_Input_States_Event_ROUGH)
+
+
         self.ROUGH_Label_ToolDIA = Label(self.master,text="R. Tool DIA")
         self.ROUGH_Label_ToolDIA_u = Label(self.master,textvariable=self.units, anchor=W)
         self.ROUGH_Entry_ToolDIA = Entry(self.master,width="15")
         self.ROUGH_Entry_ToolDIA.configure(textvariable=self.rough_dia)
         self.ROUGH_Entry_ToolDIA.bind('<Return>', self.Recalculate_Click)
         self.rough_dia.trace_variable("w", self.ROUGH_Entry_ToolDIA_Callback)
-        
+
         self.ROUGH_Label_Vangle = Label(self.master,text="R. V-Bit Angle", anchor=CENTER )
         self.ROUGH_Entry_Vangle = Entry(self.master,width="15")
         self.ROUGH_Entry_Vangle.configure(textvariable=self.rough_v_angle)
@@ -524,7 +525,7 @@ class Application(Frame):
         self.ROUGH_Entry_StepOver.bind('<Return>', self.Recalculate_Click)
         self.rough_stepover.trace_variable("w", self.ROUGH_Entry_StepOver_Callback)
 
-        self.ROUGH_Label_roughing_props = Label(self.master,text="Roughing Properties:",anchor=W)    
+        self.ROUGH_Label_roughing_props = Label(self.master,text="Roughing Properties:",anchor=W)
 
         self.ROUGH_Label_Roffset = Label(self.master,text="R. Offset", anchor=CENTER )
         self.ROUGH_Label_Roffset_u = Label(self.master,textvariable=self.units, anchor=W)
@@ -586,7 +587,7 @@ class Application(Frame):
                              command = self.GEN_Settings_Window)
         top_Settings.add("command", label = "Save Settings", \
                              command = self.Write_Settings)
-        
+
         self.menuBar.add("cascade", label="Settings", menu=top_Settings)
 
         top_Help = Menu(self.menuBar, tearoff=0)
@@ -599,9 +600,9 @@ class Application(Frame):
         #        Config File and command line options       #
         #####################################################
 
-        home_config = os.path.expanduser("~") + "/" + config_file 
+        home_config = os.path.expanduser("~") + "/" + config_file
         print home_config
-        
+
         if ( os.path.isfile(config_file) ):
             self.Open_G_Code_File(config_file)
             print "loaded config file"
@@ -677,7 +678,7 @@ class Application(Frame):
         config.append('cfg_set cuttop      %s' %( int(self.cuttop.get())))
         config.append('cfg_set cutperim    %s' %( int(self.cutperim.get())))
         config.append('cfg_set no_arcs     %s' %( int(self.no_arcs.get())))
-        config.append('cfg_set grbl_flag   %s' %( int(self.grbl_flag.get())))        
+        config.append('cfg_set grbl_flag   %s' %( int(self.grbl_flag.get())))
         # STRING.get()
         config.append('cfg_set yscale      %s'  %( self.yscale.get()))
         config.append('cfg_set toptol      %s'  %( self.toptol.get()))
@@ -694,8 +695,8 @@ class Application(Frame):
         config.append('cfg_set plunge      %s'  %( self.plungetype.get()))
 
         config.append('cfg_set lace        %s'  %( self.lace_bound.get()))
-        config.append('cfg_set cangle      %s'  %( self.cangle.get()))        
-        config.append('cfg_set tolerance   %s'  %( self.tolerance.get())) 
+        config.append('cfg_set cangle      %s'  %( self.cangle.get()))
+        config.append('cfg_set tolerance   %s'  %( self.tolerance.get()))
         config.append('cfg_set splitstep   %s'  %( self.splitstep.get()))
         config.append('cfg_set gpre        \042%s\042' %( self.gpre.get()))
         config.append('cfg_set gpost       \042%s\042' %( self.gpost.get()))
@@ -712,9 +713,9 @@ class Application(Frame):
         config.append('cfg_set rough_offset   %s'  %( self.rough_offset.get()))
         config.append('cfg_set rough_scanpat  \042%s\042' %( self.rough_scanpat.get()))
         config.append('cfg_set rough_scandir  \042%s\042' %( self.rough_scandir.get()))
-        
-        home_config = os.path.expanduser("~") + "/" + config_file         
-        
+
+        home_config = os.path.expanduser("~") + "/" + config_file
+
         with open(home_config, 'wb') as confile:
             for line in config:
                 confile.write(line + "\n")
@@ -751,8 +752,8 @@ class Application(Frame):
         header.append('(cfg_set plunge      %s )'  %( self.plungetype.get()))
 
         header.append('(cfg_set lace        %s )'  %( self.lace_bound.get()))
-        header.append('(cfg_set cangle      %s )'  %( self.cangle.get()))        
-        header.append('(cfg_set tolerance   %s )'  %( self.tolerance.get())) 
+        header.append('(cfg_set cangle      %s )'  %( self.cangle.get()))
+        header.append('(cfg_set tolerance   %s )'  %( self.tolerance.get()))
         header.append('(cfg_set splitstep   %s )'  %( self.splitstep.get()))
         header.append('(cfg_set gpre        \042%s\042 )' %( self.gpre.get()))
         header.append('(cfg_set gpost       \042%s\042 )' %( self.gpost.get()))
@@ -772,7 +773,7 @@ class Application(Frame):
         header.append('(==========================================)')
 
         pil_format = False
-        
+
         try:
             test = self.im.width()
         except:
@@ -783,7 +784,7 @@ class Application(Frame):
                 self.statusMessage.set("No Image Loaded")
                 self.statusbar.configure(bg = 'red')
                 return
-        
+
         MAT = Image_Matrix()
         MAT.FromImage(self.im,pil_format)
 
@@ -797,16 +798,16 @@ class Application(Frame):
         depth         = -float(self.z_cut.get())
         Cont_Angle    =  float(self.cangle.get())
         cutperim      =  int(self.cutperim.get())
-        
+
         r_feed = 5000.00
-            
+
         if rough_flag == 0:
             ######################################################
             tool_type     =  self.tool.get()
-            
+
             tool_diameter =  float(self.dia.get())
-            rough_depth   =  0.0 
-            rough_offset  =  0.0 
+            rough_depth   =  0.0
+            rough_offset  =  0.0
             c_feed        =  float(self.f_feed.get())
             p_feed        =  float(self.p_feed.get())
             step          =  max(1, int(floor( float(self.stepover.get()) / pixel_size)))
@@ -821,14 +822,14 @@ class Application(Frame):
             else: #"Ball"
                 TOOL = make_tool_shape(ball_tool, tool_diameter, pixel_size)
             ######################################################
-                
+
             rows = 0
             columns = 0
             columns_first = 0
             if self.scanpat.get() != "Columns":
                 rows = 1
             if self.scanpat.get() != "Rows":
-                columns = 1 
+                columns = 1
             if self.scanpat.get() == "C then R":
                 columns_first = 1
 
@@ -839,7 +840,7 @@ class Application(Frame):
         else:
             ######################################################
             tool_type     =  self.rough_tool.get()
-            
+
             rough_depth   =  float(self.rough_depth_pp.get())
             rough_offset  =  float(self.rough_offset.get())
             tool_diameter =  float(self.rough_dia.get())
@@ -863,47 +864,47 @@ class Application(Frame):
             if self.rough_scanpat.get() != "Columns":
                 rows = 1
             if self.rough_scanpat.get() != "Rows":
-                columns = 1 
+                columns = 1
             if self.rough_scanpat.get() == "C then R":
                 columns_first = 1
 
             converter = self.rough_scandir.get()
             lace_bound_val = self.lace_bound.get()
-            
+
         ### END ROUGHING STUFF ###
-            
+
         if converter == "Positive":
             conv_index = 0
             #fmessage("Positive")
-            
+
         elif converter == "Negative":
             conv_index = 1
             #fmessage("Negative")
-            
+
         elif converter == "Alternating":
             conv_index = 2
             #fmessage("Alternating")
-            
+
         elif converter == "Up Mill":
             conv_index = 3
             #fmessage("Up Milling")
-            
+
         elif converter == "Down Mill":
             conv_index = 4
             #fmessage("Down Mill")
         else:
             conv_index = 2
             fmessage("Converter Error: Setting to, Alternating")
-        
+
         if rows: convert_rows = convert_makers[conv_index]()
         else: convert_rows = None
         if columns: convert_cols = convert_makers[conv_index]()
         else: convert_cols = None
 
         if lace_bound_val != "None" and rows and columns:
-            
+
             slope = tan(Cont_Angle*pi/180)
-            
+
             if columns_first:
                 convert_rows = Reduce_Scan_Lace(convert_rows, slope, step+1)
             else:
@@ -941,12 +942,12 @@ class Application(Frame):
                 MAT.mult(1./(b-a))
         else:
             MAT.mult(1/255.0)
-            
+
         xoffset = 0
-        yoffset = 0            
+        yoffset = 0
 
         MAT.mult(depth)
-        
+
         ##########################################
         #         ORIGIN LOCATING STUFF          #
         ##########################################
@@ -991,26 +992,26 @@ class Application(Frame):
             y_zero = 0
         else:          #"Default"
             x_zero = 0
-            y_zero = 0   
+            y_zero = 0
 
         xoffset = xoffset - x_zero
         yoffset = yoffset - y_zero
-        
+
         if self.invert.get():
             MAT.mult(-1.0)
         else:
             MAT.minus(depth)
-            
+
         self.gcode = []
-        
+
         MAT.pad_w_zeros(TOOL)
-        
+
         START_TIME=time()
-        
+
         feed = [r_feed, c_feed, p_feed]
-       
+
         self.gcode = generate(self, MAT, units, TOOL, pixel_size, step,
-                             safe_z, tolerance, feed, 
+                             safe_z, tolerance, feed,
                              convert_rows, convert_cols, columns_first,
                              cutperim, Entry_cut, rough_depth, rough_flag,
                              xoffset, yoffset, splitstep, header,
@@ -1064,7 +1065,7 @@ class Application(Frame):
     def Stop_Click(self, event):
         global STOP_CALC
         STOP_CALC=1
-        
+
     # Left Column #
     #############################
     def Entry_Yscale_Check(self):
@@ -1080,7 +1081,7 @@ class Application(Frame):
             return 3     # Value not a number
         return 0         # Value is a valid number
     def Entry_Yscale_Callback(self, varName, index, mode):
-        self.entry_set(self.Entry_Yscale, self.Entry_Yscale_Check(), new=1)        
+        self.entry_set(self.Entry_Yscale, self.Entry_Yscale_Check(), new=1)
     #############################
     def Entry_Toptol_Check(self):
         try:
@@ -1096,7 +1097,7 @@ class Application(Frame):
     #############################
     # End Left Column #
     #############################
-    
+
     #############################
     # Start Right Column #
     #############################
@@ -1190,7 +1191,7 @@ class Application(Frame):
     #############################
     # Start ROUGH Setttings     #
     #############################
-    
+
     def ROUGH_Entry_ToolDIA_Check(self):
         try:
             value = float(self.rough_dia.get())
@@ -1203,7 +1204,7 @@ class Application(Frame):
 
     def ROUGH_Entry_ToolDIA_Callback(self, varName, index, mode):
         self.entry_set(self.ROUGH_Entry_ToolDIA, self.ROUGH_Entry_ToolDIA_Check(), new=1)
-    
+
     def ROUGH_Entry_Vangle_Check(self):
         try:
             value = float(self.rough_v_angle.get())
@@ -1215,7 +1216,7 @@ class Application(Frame):
         return 0         # Value is a valid number
     def ROUGH_Entry_Vangle_Callback(self, varName, index, mode):
         self.entry_set(self.ROUGH_Entry_Vangle, self.ROUGH_Entry_Vangle_Check(), new=1)
-    
+
     def ROUGH_Entry_Feed_Check(self):
         try:
             value = float(self.rough_r_feed.get())
@@ -1227,7 +1228,7 @@ class Application(Frame):
         return 1         # Value is a valid number changes do not require recalc
     def ROUGH_Entry_Feed_Callback(self, varName, index, mode):
         self.entry_set(self.ROUGH_Entry_Feed,self.ROUGH_Entry_Feed_Check(), new=1)
-    
+
     def ROUGH_Entry_p_feed_Check(self):
         try:
             value = float(self.rough_p_feed.get())
@@ -1239,7 +1240,7 @@ class Application(Frame):
         return 0         # Value is a valid number
     def ROUGH_Entry_p_feed_Callback(self, varName, index, mode):
         self.entry_set(self.ROUGH_Entry_p_feed, self.ROUGH_Entry_p_feed_Check(), new=1)
-    
+
     def ROUGH_Entry_StepOver_Check(self):
         try:
             value = float(self.rough_stepover.get())
@@ -1251,7 +1252,7 @@ class Application(Frame):
         return 0         # Value is a valid number
     def ROUGH_Entry_StepOver_Callback(self, varName, index, mode):
         self.entry_set(self.ROUGH_Entry_StepOver, self.ROUGH_Entry_StepOver_Check(), new=1)
-    
+
     def ROUGH_Entry_Roffset_Check(self):
         try:
             value = float(self.rough_offset.get())
@@ -1263,7 +1264,7 @@ class Application(Frame):
         return 0         # Value is a valid number
     def ROUGH_Entry_Roffset_Callback(self, varName, index, mode):
         self.entry_set(self.ROUGH_Entry_Roffset, self.ROUGH_Entry_Roffset_Check(), new=1)
-    
+
     def ROUGH_Entry_Rdepth_Check(self):
         try:
             value = float(self.rough_depth_pp.get())
@@ -1275,11 +1276,11 @@ class Application(Frame):
         return 0         # Value is a valid number
     def ROUGH_Entry_Rdepth_Callback(self, varName, index, mode):
         self.entry_set(self.ROUGH_Entry_Rdepth, self.ROUGH_Entry_Rdepth_Check(), new=1)
-    
+
     # End ROUGH setttings       #
     #############################
 
-    
+
     def Entry_Tolerance_Check(self):
         try:
             value = float(self.tolerance.get())
@@ -1291,7 +1292,7 @@ class Application(Frame):
         return 0         # Value is a valid number
     def Entry_Tolerance_Callback(self, varName, index, mode):
         self.entry_set(self.Entry_Tolerance,self.Entry_Tolerance_Check(), new=1)
-    
+
     def Entry_ContAngle_Check(self):
         try:
             value = float(self.cangle.get())
@@ -1322,7 +1323,7 @@ class Application(Frame):
         GEN_error_cnt= \
         self.entry_set(self.Entry_Tolerance,self.Entry_Tolerance_Check(),2) +\
         self.entry_set(self.Entry_ContAngle,self.Entry_ContAngle_Check(),2)
-        
+
         ROUGH_error_cnt= \
         self.entry_set(self.ROUGH_Entry_ToolDIA, self.ROUGH_Entry_ToolDIA_Check()  ,2) +\
         self.entry_set(self.ROUGH_Entry_Vangle, self.ROUGH_Entry_Vangle_Check()    ,2) +\
@@ -1409,7 +1410,7 @@ class Application(Frame):
         except:
             fmessage("Unable to open file: %s" %(filename))
             return
-        
+
         text_codes=[]
         ident = "cfg_set"
         for line in fin:
@@ -1460,7 +1461,7 @@ class Application(Frame):
                 elif "lace"    in line:
                      self.lace_bound.set(line[line.find("lace"):].split()[1])
                 elif "cangle"    in line:
-                     self.cangle.set(line[line.find("cangle"):].split()[1])    
+                     self.cangle.set(line[line.find("cangle"):].split()[1])
                 elif "tolerance"    in line:
                      self.tolerance.set(line[line.find("tolerance"):].split()[1])
                 elif "splitstep"    in line:
@@ -1476,7 +1477,7 @@ class Application(Frame):
                      self.gpost.set(line[line.find("gpost"):].split("\042")[1])
                 elif "imagefile"    in line:
                        self.IMAGE_FILE=(line[line.find("imagefile"):].split("\042")[1])
-                       
+
                 elif "rough_tool"    in line:
                      self.rough_tool.set(line[line.find("rough_tool"):].split()[1])
                 elif "rough_dia"    in line:
@@ -1492,14 +1493,14 @@ class Application(Frame):
                 elif "rough_depth_pp"    in line:
                      self.rough_depth_pp.set(line[line.find("rough_depth_pp"):].split()[1])
                 elif "rough_offset"    in line:
-                     self.rough_offset.set(line[line.find("rough_offset"):].split()[1])                     
+                     self.rough_offset.set(line[line.find("rough_offset"):].split()[1])
                 elif "rough_scanpat"    in line:
                      self.rough_scanpat.set(line[line.find("rough_scanpat"):].split("\042")[1])
                 elif "rough_scandir"    in line:
                      self.rough_scandir.set(line[line.find("rough_scandir"):].split("\042")[1])
-                     
+
         fin.close()
-            
+
         fileName, fileExtension = os.path.splitext(self.IMAGE_FILE)
         init_file=os.path.basename(fileName)
         if init_file != "None":
@@ -1516,7 +1517,7 @@ class Application(Frame):
 
         temp_name, fileExtension = os.path.splitext(filename)
         file_base=os.path.basename(temp_name)
-            
+
         if self.initComplete == 1:
             self.menu_Mode_Change()
             self.NGC_FILE = filename
@@ -1525,29 +1526,29 @@ class Application(Frame):
         im = []
         if not ( os.path.isfile(fileselect) ):
             self.statusMessage.set("Image file not found: %s" %(fileselect))
-            self.statusbar.configure( bg = 'red' )            
+            self.statusbar.configure( bg = 'red' )
         else:
             self.statusMessage.set("Image file: %s " %(fileselect))
-            self.statusbar.configure( bg = 'white' ) 
+            self.statusbar.configure( bg = 'white' )
             try:
                 PIL_im = Image.open(fileselect)
                 self.wim, self.him = PIL_im.size
                 # Convert image to grayscale
-                PIL_im = PIL_im.convert("L") 
+                PIL_im = PIL_im.convert("L")
 
                 self.aspect_ratio =  float(self.wim-1) / float(self.him-1)
-                self.Xscale.set("%.3f" %( self.aspect_ratio * float(self.yscale.get())) ) 
+                self.Xscale.set("%.3f" %( self.aspect_ratio * float(self.yscale.get())) )
                 self.pixsize.set("%.3f" %( float(self.yscale.get()) / (self.him - 1.0) ) )
-                                
+
                 self.im = PIL_im
                 self.SCALE = 1
                 self.ui_TKimage = ImageTk.PhotoImage(self.im.resize((50,50), Image.ANTIALIAS))
                 self.IMAGE_FILE = fileselect
-                    
+
             except:
                 self.statusMessage.set("Unable to Open Image file: %s" %(self.IMAGE_FILE))
-                self.statusbar.configure( bg = 'red' )    
-                
+                self.statusbar.configure( bg = 'red' )
+
     def menu_File_Save_G_Code_File_Finish(self):
         self.menu_File_Save_G_Code_File(rough_flag = 0)
 
@@ -1559,14 +1560,14 @@ class Application(Frame):
         STOP_CALC = 0
         if (self.Check_All_Variables() > 0):
             return
-        
+
         init_dir = os.path.dirname(self.NGC_FILE)
         if ( not os.path.isdir(init_dir) ):
             init_dir = os.path.expanduser("~")
 
         fileName, fileExtension = os.path.splitext(self.NGC_FILE)
         init_file=os.path.basename(fileName)
-        
+
         fileName, fileExtension = os.path.splitext(self.IMAGE_FILE)
         init_file=os.path.basename(fileName)
 
@@ -1578,7 +1579,7 @@ class Application(Frame):
                                      filetypes=[("G-Code Files","*.ngc"),("TAP File","*.tap"),("All Files","*")],\
                                      initialdir=init_dir,\
                                      initialfile= init_file )
-        
+
         if filename != '' and filename != ():
             self.NGC_FILE = filename
 
@@ -1602,11 +1603,11 @@ class Application(Frame):
             self.stop_button = Button(vcalc_status,text="Stop Calculation")
             self.stop_button.place(x=12, y=12, width=130, height=30)
             self.stop_button.bind("<ButtonRelease-1>", self.Stop_Click)
-            
+
             vcalc_status.resizable(0,0)
             vcalc_status.title('Saving File')
             vcalc_status.iconname(p_name)
-            
+
             try: #Attempt to create temporary icon bitmap file
                 f = open(p_name + "_icon",'w')
                 f.write("#define " + p_name + "_icon_width 16\n")
@@ -1643,7 +1644,7 @@ class Application(Frame):
                 pass
     ################
     ################
-            
+
     def menu_File_Quit(self):
         if message_ask_ok_cancel("Exit", "Exiting...."):
             self.Quit_Click(None)
@@ -1671,7 +1672,7 @@ class Application(Frame):
     def menu_Help_About(self):
         about = " " + p_name + " by Onekk.\n"
         about = about + " Fork of the excellent "
-        about = about + " dmap2gcode by Scorch"       
+        about = about + " dmap2gcode by Scorch"
         message_box("About " + p_name, about)
 
     def KEY_ESC(self, event):
@@ -1709,7 +1710,7 @@ class Application(Frame):
         h = int(self.master.winfo_height())
         if (self.x, self.y) == (-1,-1):
             self.x, self.y = x,y
-            
+
         if abs(self.w-w)>10 or abs(self.h-h)>10 or update==1:
             ######################
             #  Form changed Size (resized) adjust as required #
@@ -1717,7 +1718,7 @@ class Application(Frame):
             self.w = w
             self.h = h
 
-            if 0 == 0:                
+            if 0 == 0:
                 # Left Column #
                 w_label=90
                 w_entry=60
@@ -1738,7 +1739,7 @@ class Application(Frame):
                 self.Label_Yscale2.place(x=x_label_L, y=Yloc, width=w_label, height=21)
                 self.Label_Yscale2_u.place(x=x_units_L, y=Yloc, width=w_units, height=21)
                 self.Label_Yscale2_val.place(x=x_entry_L, y=Yloc, width=w_entry, height=21)
-                
+
                 Yloc=Yloc+24
                 self.Label_PixSize.place(x=x_label_L, y=Yloc, width=w_label, height=21)
                 self.Label_PixSize_u.place(x=x_units_L, y=Yloc, width=w_units, height=21)
@@ -1752,7 +1753,7 @@ class Application(Frame):
                 Yloc=Yloc+24
                 self.Label_Invert_Color_FALSE.place(x=x_label_L, y=Yloc, width=w_label, height=21)
                 self.Radio_Invert_Color_FALSE.place(x=x_entry_L+20, y=Yloc, width=75, height=23)
-                
+
                 Yloc=Yloc+24
                 #self.Label_Invert_Color_TRUE.place(x=x_label_L, y=Yloc, width=w_label, height=21)
                 self.Radio_Invert_Color_TRUE.place(x=x_entry_L+20, y=Yloc, width=75, height=23)
@@ -1771,7 +1772,7 @@ class Application(Frame):
                 Yloc=Yloc+6
                 self.Label_CutTop.place(x=x_label_L, y=Yloc, width=w_label+20, height=21)
                 self.CB_CutTop.place(x=x_entry_L+20, y=Yloc, width=w_entry+20, height=23)
-                
+
                 Yloc=Yloc+24
                 self.Label_Toptol.place(x=x_label_L, y=Yloc, width=w_label, height=21)
                 self.Label_Toptol_u.place(x=x_units_L, y=Yloc, width=w_units, height=21)
@@ -1803,7 +1804,7 @@ class Application(Frame):
                 Yloc=Yloc+24
                 self.Label_Vangle.place(x=x_label_R, y=Yloc, width=w_label, height=21)
                 self.Entry_Vangle.place(x=x_entry_R, y=Yloc, width=w_entry, height=23)
-                
+
                 Yloc=Yloc+24+12
                 self.separator3.place(x=x_label_R, y=Yloc,width=w_label+75+40, height=2)
 
@@ -1813,11 +1814,11 @@ class Application(Frame):
                 Yloc=Yloc+24
                 self.Label_Scanpat.place(x=x_label_R, y=Yloc, width=w_label, height=21)
                 self.ScanPat_OptionMenu.place(x=x_entry_R, y=Yloc, width=w_entry+40, height=23)
-               
+
                 Yloc=Yloc+24
                 self.Label_Scandir.place(x=x_label_R, y=Yloc, width=w_label, height=21)
                 self.ScanDir_OptionMenu.place(x=x_entry_R, y=Yloc, width=w_entry+40, height=23)
-                
+
                 Yloc=Yloc+24
                 self.Entry_Feed.place(  x=x_entry_R, y=Yloc, width=w_entry, height=23)
                 self.Label_Feed.place(  x=x_label_R, y=Yloc, width=w_label, height=21)
@@ -1859,10 +1860,10 @@ class Application(Frame):
 
                 x_label_3 = self.w - 260
                 x_entry_3 = x_label_3 + w_label + 10
-                x_units_3 = x_entry_3 + w_entry + 5                
+                x_units_3 = x_entry_3 + w_entry + 5
 
                 #self.ROUGH_sep1.place(x=x_label_3-3, y=50)
-                
+
                 D_Yloc=6
                 self.ROUGH_Label_tool_opt.place(x=x_label_3, y=D_Yloc, width=w_label*2, height=21)
 
@@ -1883,7 +1884,7 @@ class Application(Frame):
                 D_Yloc=D_Yloc+24+12
                 self.ROUGH_sep3.place(x=x_label_3, y=D_Yloc,width=w_label+75+40, height=2)
 
-                D_Yloc=D_Yloc+6        
+                D_Yloc=D_Yloc+6
                 self.ROUGH_Label_gcode_opt.place(x=x_label_3, y=D_Yloc, width=w_label*2, height=21)
 
                 D_Yloc=D_Yloc+24
@@ -1929,16 +1930,16 @@ class Application(Frame):
                 self.ROUGH_sep2.place(x=x_label_3, y=D_Yloc,width=w_label+75+40, height=2)
 
                 D_Yloc=D_Yloc+50
-                self.ROUGH_Save.place(x=x_label_3, y=D_Yloc, width=130, height=40) 
-               
+                self.ROUGH_Save.place(x=x_label_3, y=D_Yloc, width=130, height=40)
+
                 self.PreviewCanvas.configure(width=self.canvas_width, height=self.h-100)
                 self.PreviewCanvas_frame.place(x=220, y=20)
 
                 self.Set_Input_States()
                 self.Set_Input_States_ROUGH()
-                
+
             self.Plot_Data()
-            
+
     def Recalculate_RQD_Click(self, event):
         self.menu_View_Refresh()
 
@@ -1958,7 +1959,7 @@ class Application(Frame):
             self.Entry_Toptol.configure(state="normal")
             self.Label_Toptol.configure(state="normal")
             self.Label_Toptol_u.configure(state="normal")
-            
+
     def Set_Input_States_Event(self,event):
         self.Set_Input_States()
 
@@ -1979,7 +1980,7 @@ class Application(Frame):
         else:
             self.Label_LaceBound.configure(state="normal")
             self.LaceBound_OptionMenu.configure(state="normal")
-            
+
     def Set_Input_States_GEN_Event(self,event):
         self.Set_Input_States_GEN()
 
@@ -1990,19 +1991,19 @@ class Application(Frame):
         else:
             self.ROUGH_Label_Vangle.configure(state="normal")
             self.ROUGH_Entry_Vangle.configure(state="normal")
-            
+
     def Set_Input_States_Event_ROUGH(self,event):
         self.Set_Input_States_ROUGH()
-        
+
     def Plot_Data(self):
         """\
-        CANVAS PLOTTING STUFF     
+        CANVAS PLOTTING STUFF
         """
         self.PreviewCanvas.delete(ALL)
-        
+
         if (self.Check_All_Variables() > 0):
             return
-        
+
         cszw = int(self.PreviewCanvas.cget("width"))
         cszh = int(self.PreviewCanvas.cget("height"))
         wc = float(cszw/2)
@@ -2020,7 +2021,7 @@ class Application(Frame):
                 self.SCALE = 1
             self.ui_TKimage = ImageTk.PhotoImage(self.im.resize((nw,nh), Image.ANTIALIAS))
         except:
-            self.SCALE = 1            
+            self.SCALE = 1
 
         self.canvas_image = self.PreviewCanvas.create_image(wc, \
                             hc, anchor=CENTER, image=self.ui_TKimage)
@@ -2031,7 +2032,7 @@ class Application(Frame):
         miny = int(self.him/2)
         maxx = -minx
         maxy = -miny
-        
+
         # ORIGIN LOCATING STUFF
 
         CASE = str(self.origin.get())
@@ -2064,8 +2065,8 @@ class Application(Frame):
             y_zero = miny
         else:          #"Default"
             x_zero = minx
-            y_zero = miny    
-        
+            y_zero = miny
+
         axis_length = int(self.wim/4)
 
         PlotScale =  self.SCALE
@@ -2073,7 +2074,7 @@ class Application(Frame):
         axis_x2 =  cszw/2 + ( axis_length-x_zero ) * PlotScale
         axis_y1 =  cszh/2 - (-y_zero             ) * PlotScale
         axis_y2 =  cszh/2 - ( axis_length-y_zero ) * PlotScale
-        
+
         for seg in self.segID:
             self.PreviewCanvas.delete(seg)
         self.segID = []
@@ -2156,7 +2157,7 @@ class Application(Frame):
         self.Entry_Gpost = Entry(gen_settings)
         self.Entry_Gpost.place(x=xd_entry_L, y=D_Yloc, width=300, height=23)
         self.Entry_Gpost.configure(textvariable=self.gpost)
-        
+
         D_Yloc=D_Yloc+D_dY
         self.Label_LaceBound = Label(gen_settings,text="Lace Bounding")
         self.Label_LaceBound.place(x=xd_label_L, y=D_Yloc, width=w_label, height=21)
@@ -2215,10 +2216,10 @@ class Application(Frame):
         self.CB_Disable_Arcs = Checkbutton(gen_settings,text=" ", \
                                               anchor=W, command=self.Set_Input_States)
         self.CB_Disable_Arcs.place(x=w_label+22, y=D_Yloc, width=75, height=23)
-        
+
         self.Label_Disable_Arcs.place(x=xd_label_L, y=D_Yloc, width=113, height=21)
         self.CB_Disable_Arcs.configure(variable=self.no_arcs)
-        
+
         ## Buttons ##
         gen_settings.update_idletasks()
         Ybut=int(gen_settings.winfo_height())-30
@@ -2229,7 +2230,7 @@ class Application(Frame):
 
         self.Set_Input_States_GEN()
 
-  
+
 ########################################
 # Author.py                            #
 # A component of emc2                  #
@@ -2400,7 +2401,7 @@ If 'plane' is specified as 17, 18, or 19, it may find helical arcs in the given
 plane in addition to lines.  Note that if there is movement in the plane
 perpendicular to the arc, it will be distorted, so 'plane' should usually
 be specified only when there is only movement on 2 axes
-"""        
+"""
     if len(st) == 1:
         yield "G1", st[0], None
         return
@@ -2474,8 +2475,8 @@ be specified only when there is only movement on 2 axes
 
 class Gcode:
     """\
-    Create rs274ngc files compatible with GRBL    
-    """    
+    Create rs274ngc files compatible with GRBL
+    """
     def __init__(self, homeheight = 1.5, safetyheight = 0.04,
                  tolerance=0.001, units="G20", header="",
                  preamble="", postamble="",
@@ -2499,8 +2500,8 @@ class Gcode:
         self.preamble = preamble
         self.postamble = postamble
         self.r_feed = r_feed
-        self.c_feed = c_feed 
-        self.p_feed = p_feed               
+        self.c_feed = c_feed
+        self.p_feed = p_feed
         self.no_arcs = no_arcs
 
     def comment(self,msg):
@@ -2516,7 +2517,7 @@ class Gcode:
     def begin(self):
         """\
 This function moves to the safety height, sets many modal codes to default
-values, turns the spindle on at 3000RPM        
+values, turns the spindle on at 3000RPM
 """
         if self.header == "":
             self.write("(no header)")
@@ -2527,8 +2528,8 @@ values, turns the spindle on at 3000RPM
         if self.preamble == "":
             self.write("G17 G90 M3 S3000 G40 G94")
         else:
-            self.write(self.preamble)    
-    
+            self.write(self.preamble)
+
         self.write(self.units)
 
         if not self.no_arcs:
@@ -2546,8 +2547,8 @@ to a rapid) but can be called manually as well.  For instance, when
 a contouring program reaches the end of a row, it may be desirable to enforce
 that the last 'cut' coordinate is actually in the output file, and it may
 give better performance because this means that the simplification algorithm
-will examine fewer points per run.            
-"""     
+will examine fewer points per run.
+"""
         if not self.cuts:
             return
 
@@ -2562,8 +2563,8 @@ will examine fewer points per run.
                 self.lastz = z
             else:
                 self.move_common("G1", x, y, z, feed = self.c_feed)
-        
-        self.comment("EF " + msg)        
+
+        self.comment("EF " + msg)
         self.cuts = []
 
     def end(self):
@@ -2582,12 +2583,12 @@ will examine fewer points per run.
         """\
 Set exact path mode.  Note that unless self.tolerance is set to zero,
 the simplification algorithm may still skip over specified points.
-"""        
+"""
         self.write("G61")
 
     # Set continuous mode.
     def continuous(self, tolerance=0.0):
-    
+
         if tolerance > 0.0:
             self.write("G64 P%.4f" % tolerance)
         else:
@@ -2610,7 +2611,7 @@ the simplification algorithm may still skip over specified points.
 
         if a == None: a = self.lasta
 
-        if feed == None: feed = self.lastfeed 
+        if feed == None: feed = self.lastfeed
 
         if x != self.lastx:
                 xstring = " X%.4f" % (x)
@@ -2634,11 +2635,11 @@ the simplification algorithm may still skip over specified points.
         if gcode != self.lastgcode:
                 gcodestring = gcode
                 self.lastgcode = gcode
-                 
+
         if feed != self.lastfeed:
             m_feed = " F%.3f" % feed
             self.lastfeed = feed
-             
+
         cmd = "".join([gcodestring, xstring, ystring, zstring, astring, m_feed])
         if cmd:
             self.write(cmd)
@@ -2671,7 +2672,8 @@ the simplification algorithm may still skip over specified points.
     def safety(self,msg=""):
         #"Go to the 'safety' height at rapid speed"
         #self.flush("Safety " + msg) # We flush by hand
-        self.comment("S " + msg)
+        if GC_DEBUG > 0:
+            self.comment("S " + msg)
         self.rapid(z=self.safetyheight,feed=self.r_feed)
 
 
@@ -2702,7 +2704,7 @@ def make_tool_shape(f, wdia, resp, rough_offset=0.0):
     rad = int(ceil((wrad-resp/2.0)*res))
     if rad < 1: rad = 1
     dia = 2*rad+1
-    
+
     hdia = rad
     l = []
     for x in range(dia):
@@ -2860,7 +2862,7 @@ class Reduce_Scan_Lace_new:
     def __call__(self, primary, items):
         keep = self.keep
         max_z_cut = self.depth  # set a max z value to cut
-        
+
         def bos(j):
             return j - j % keep
 
@@ -2890,7 +2892,7 @@ class Reduce_Scan_Lace_new:
     def reset(self):
         self.converter.reset()
 #############
-        
+
 unitcodes = ['G20', 'G21']
 convert_makers = [ Convert_Scan_Increasing, Convert_Scan_Decreasing, Convert_Scan_Alternating, Convert_Scan_Upmill, Convert_Scan_Downmill ]
 
@@ -2901,22 +2903,22 @@ def progress(a, b, START_TIME, GUI=[]):
     MIN_REMAIN =( time()-START_TIME )/60 * (100-CUR_PCT)/CUR_PCT
     MIN_TOTAL = 100.0/CUR_PCT * ( time()-START_TIME )/60
     message = '%.1f %% ( %.1f Minutes Remaining | %.1f Minutes Total )' %( CUR_PCT, MIN_REMAIN, MIN_TOTAL )
-    try:   
+    try:
         GUI.statusMessage.set(message)
     except:
         fmessage(message)
 
 class Converter:
-    def __init__(self, BIG, 
+    def __init__(self, BIG,
                  image, units, tool_shape, pixel_size, pixelstep,
                  safetyheight, tolerance,feed,
                  convert_rows, convert_cols, cols_first_flag,
                  border, entry_cut, roughing_delta,rh_flag,
-                 xoffset, yoffset, splitstep, header, 
+                 xoffset, yoffset, splitstep, header,
                  preamble, postamble, edge_offset,
                  no_arcs,grbl):
 
-        self.BIG = BIG  # Probably the Application window reference 
+        self.BIG = BIG  # Probably the Application window reference
         self.image = image
         self.units = units
         self.tool_shape = tool_shape
@@ -2977,14 +2979,16 @@ class Converter:
         print row_cnt,col_cnt
         self.cnt = 0.0
 
-    def one_pass(self):
+    def one_pass(self,depth):
         g = self.g
-        # g.set_feed(self.c_feed)
-        g.comment("OP-S")
+        g.comment("-- Cut Pass at %.4f --" % (depth))
+
         if self.convert_cols and self.cols_first_flag:
             self.g.set_plane(19)
             self.mill_cols(self.convert_cols, True)
-            if self.convert_rows: g.safety("OP-CC-CF")
+
+            if self.convert_rows:
+                g.safety("OP-CC-CF")
 
         if self.convert_rows:
             self.g.set_plane(18)
@@ -2992,7 +2996,10 @@ class Converter:
 
         if self.convert_cols and not self.cols_first_flag:
             self.g.set_plane(19)
-            if self.convert_rows: g.safety("OP-CC-NFF")
+
+            if self.convert_rows:
+                g.safety("OP-CC-NFF")
+
             self.mill_cols(self.convert_cols, not self.convert_rows)
 
         g.safety("OPS")
@@ -3000,41 +3007,44 @@ class Converter:
         ## mill border ##
         if self.convert_cols:
             self.convert_cols.reset()
+
         if self.convert_rows:
             self.convert_rows.reset()
 
         step_save = self.pixelstep
         self.pixelstep = max(self.w1, self.h1) + 1
+
         if self.border == 1 and not self.convert_rows:
             if self.convert_cols:
                 self.g.set_plane(18)
                 self.mill_rows(self.convert_cols, True)
                 g.safety("OP-B1-NCR")
-                
+
         if self.border == 1 and not self.convert_cols:
             if self.convert_rows:
                 self.g.set_plane(19)
                 self.mill_cols(self.convert_rows, True)
                 g.safety("OP-B1-NCC")
-                
-        self.pixelstep = step_save 
+
+        self.pixelstep = step_save
 
         if self.convert_cols:
             self.convert_cols.reset()
+
         if self.convert_rows:
             self.convert_rows.reset()
-            
-        g.safety("OPSE")
+
+        g.safety("End Cut Pass")
 
     def convert(self):
         output_gcode = []
-            
+
         self.g = g = Gcode(safetyheight=self.safetyheight,
                            tolerance=self.tolerance,
                            units=self.units,
                            header=self.header,
                            preamble=self.preamble,
-                           postamble=self.postamble, 
+                           postamble=self.postamble,
                            target=lambda s: output_gcode.append(s),
                            r_feed = self.r_feed,
                            c_feed = self.c_feed,
@@ -3048,26 +3058,27 @@ class Converter:
             g.continuous(self.tolerance)
         else:
             pass
-            
+
         # g.safety("CF") # Not necessary we do the safety height in g.begin()
-        
+
         if self.rh_flag:
+            g.comment("Roughing code")
             r = -self.rh_delta
             m = self.image.min()
-            
+
             while r > m:
                 self.rd = r
-                self.one_pass()
+                self.one_pass(self.rd)
                 r = r - self.rh_delta
             if r < m + epsilon:
                 self.rd = m
-                self.one_pass()
+                self.one_pass(self.rd)
         else:
             self.rd = self.image.min()
-            self.one_pass()
+            self.one_pass(self.rd)
 
         g.end()
-        
+
         return output_gcode
 
     def get_z(self, x, y):
@@ -3096,7 +3107,7 @@ class Converter:
             out.append(i)
             i += step
         return out
-            
+
     def mill_rows(self, convert_scan, primary):
         global STOP_CALC
         w1 = self.w1
@@ -3107,7 +3118,7 @@ class Converter:
         jrange = self.frange(self.splitpixels+pixel_offset, w1-pixel_offset, pixelstep)
         if jrange[0] != pixel_offset: jrange.insert(0,pixel_offset)
         if w1-1-pixel_offset not in jrange: jrange.append(w1-1-pixel_offset)
-        
+
         irange = range(pixel_offset,h1-pixel_offset)
 
         r_cnt = 0
@@ -3118,13 +3129,21 @@ class Converter:
             progress(self.cnt, self.cnt_total, self.START_TIME, self.BIG )
             y = (w1-j-1) * pixelsize + self.yoffset
             scan = []
-            
+
             for i in irange:
                 self.BIG.update()
                 if STOP_CALC: return
                 x = i * pixelsize + self.xoffset
-                milldata = (i, (x, y, self.get_z(i, j)),
-                            self.get_dz_dx(i, j), self.get_dz_dy(i, j))
+                z = self.get_z(i, j)
+
+                if DEBUG_CALC > 0:
+                    if z > self.rd:
+                        print z, self.rd 
+                    
+                milldata = (i, (x, y, z),self.get_dz_dx(i, j),
+                            self.get_dz_dy(i, j))
+
+
                 scan.append(milldata)
 
             for flag, points in convert_scan(primary, scan):
@@ -3135,10 +3154,9 @@ class Converter:
                     if p_f:
                         self.g.cut(*p[1])
                     else:
-                        print "no p_f - %s" % (r_cnt)
                         self.g.move_common("G1", p[1][0],p[1][1],p[1][2], feed = self.p_feed)
                         p_f = 1
-                        
+
             self.g.flush(feed = self.c_feed, msg = "- Row %s" % (r_cnt) )
 
     def mill_cols(self, convert_scan, primary):
@@ -3153,7 +3171,7 @@ class Converter:
         if h1-1-pixel_offset not in jrange: jrange.append(h1-1-pixel_offset)
 
         irange = range(pixel_offset,w1-pixel_offset)
-        
+
         if h1-1-pixel_offset not in jrange: jrange.append(h1-1-pixel_offset)
         jrange.reverse()
 
@@ -3177,11 +3195,10 @@ class Converter:
             self.g.flush(feed = self.c_feed, msg = "Mill Col")
 
 def generate(*args, **kw):
-    """ 
+    """
     Is called from Apllication.WriteGCode around line 1020
     Call the Converter.convert() function around line 2900
     and return the Gcode generated
-    
     """
     return Converter(*args, **kw).convert()
 
@@ -3197,9 +3214,12 @@ class SimpleEntryCut:
         conv.g.safety("SEC")
         conv.g.rapid(p[0], p[1],feed=self.feed)
 
-# Calculate the portion of the arc to do so that none is above the
-# safety height (that's just silly)
+
 def circ(r,b):
+    """\
+    Calculate the portion of the arc to do so that none is above the
+    safety height (that's just silly)
+    """
     z = r**2 - (r-b)**2
     if z < 0: z = 0
     return z**.5
@@ -3212,12 +3232,8 @@ class ArcEntryCut:
     def __call__(self, conv, i0, j0, points):
         if len(points) < 2:
             p = points[0][1]
-            if self.feed:
-                conv.g.set_feed(self.feed)
             conv.g.safety("AEC")
-            conv.g.rapid(p[0], p[1])
-            if self.feed:
-                conv.g.set_feed(conv.feed)
+            conv.g.rapid(p[0], p[1],feed=self.feed)
             return
 
         p1 = points[0][1]
@@ -3227,8 +3243,6 @@ class ArcEntryCut:
         lim = int(ceil(self.max_radius / conv.pixelsize))
         r = range(1, lim)
 
-        if self.feed:
-            conv.g.set_feed(self.feed)
         conv.g.safety("AEC")
 
         x, y, z = p1
@@ -3262,21 +3276,22 @@ class ArcEntryCut:
             z1 = min(p1[2] + radius, conv.safetyheight)
 
             x1 = p1[0] + cx * circ(radius, z1 - p1[2])
-            conv.g.rapid(x1, p1[1])
+            conv.g.rapid(x1, p1[1],feed=self.feed)
             conv.g.cut(z=z1)
 
             I = - cx * circ(radius, z1 - p1[2])
             K = (p1[2] + radius) - z1
-            
-            conv.g.flush("AEC") # Broken for now 
+
+            conv.g.flush(feed=self.feed,msg = "AEC")
             conv.g.lastgcode = None
+            
             if cx > 0:
                 #conv.g.write("G3 X%f Z%f R%f" % (p1[0], p1[2], radius)) #G3
                 conv.g.write("G3 X%f Z%f I%f K%f" % (p1[0], p1[2], I, K))
             else:
                 #conv.g.write("G2 X%f Z%f R%f" % (p1[0], p1[2], radius)) #G2
                 conv.g.write("G2 X%f Z%f I%f K%f" % (p1[0], p1[2], I, K))
-                
+
             conv.g.lastx = p1[0]
             conv.g.lasty = p1[1]
             conv.g.lastz = p1[2]
@@ -3298,15 +3313,15 @@ class ArcEntryCut:
 
             z1 = min(p1[2] + radius, conv.safetyheight)
             y1 = p1[1] + cy * circ(radius, z1 - p1[2])
-            conv.g.rapid(p1[0], y1)
+            conv.g.rapid(p1[0], y1,feed=self.feed)
             conv.g.cut(z=z1)
-            
+
             J =  -cy * circ(radius, z1 - p1[2])
             K = (p1[2] + radius) - z1
-            
-            conv.g.flush("AEC") # Broken for now
+
+            conv.g.flush(feed=self.feed,msg = "AEC")
             conv.g.lastgcode = None
-            
+
             if cy > 0:
                 #conv.g.write("G2 Y%f Z%f R%f" % (p1[1], p1[2], radius)) #G2
                 conv.g.write("G2 Y%f Z%f J%f K%f" % (p1[1], p1[2], J, K))
@@ -3316,8 +3331,6 @@ class ArcEntryCut:
             conv.g.lastx = p1[0]
             conv.g.lasty = p1[1]
             conv.g.lastz = p1[2]
-        if self.feed:
-            conv.g.set_feed(conv.feed)
 
 class Image_Matrix:
     def __init__(self, width=2, height=2):
@@ -3342,7 +3355,7 @@ class Image_Matrix:
         self.matrix = numarray.zeros((s, s), 'Float32')
         for x in range(s):
             for y in range(s):
-                self.matrix[x,y]=float(input_list[x][y])       
+                self.matrix[x,y]=float(input_list[x][y])
 
     def FromImage(self, im, pil_format):
         global STOP_CALC
@@ -3364,7 +3377,7 @@ class Image_Matrix:
                     try:    pix = im.get(j,i).split()
                     except: pix = im.get(j,i)
                     self.matrix[i,j] = float(pix[0])
-                    
+
         self.width  = wim
         self.height = him
         self.shape  = [wim, him]
@@ -3372,9 +3385,9 @@ class Image_Matrix:
 
     def pad_w_zeros(self,tool):
         ts = tool.width
-        self.t_offset = (ts-1)/2 
+        self.t_offset = (ts-1)/2
         to = self.t_offset
-        
+
         w, h = self.shape
         w1 = w + ts-1
         h1 = h + ts-1
@@ -3401,10 +3414,10 @@ class Image_Matrix:
                               self.t_offset:self.t_offset+self.height].max()
     def mult(self,val):
         self.matrix = self.matrix * float(val)
-            
+
     def minus(self,val):
         self.matrix = self.matrix - float(val)
-        
+
 ################################################################################
 #             Function for outputting messages to different locations          #
 #            depending on what options are enabled                             #
@@ -3441,7 +3454,7 @@ def message_ask_ok_cancel(title, mess):
 ################################################################################
 #                          Startup Application                                 #
 ################################################################################
-    
+
 root = Tk()
 app = Application(root)
 app.master.title(p_name + " V " + version)
