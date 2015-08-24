@@ -40,7 +40,7 @@ p_name = "grbl-i2g"
 QUIET = False
 GC_DEBUG = 1 # 0 = to avoid debug output - 1 for debug
 STOP_CALC = 0
-DEBUG_CALC = 1 # 0 = to avoid debug output - 1 for debug 
+DEBUG_CALC = 1 # 0 = to avoid debug output - 1 for debug
 import sys
 VERSION = sys.version_info[0]
 
@@ -116,7 +116,6 @@ class Application(Frame):
         self.master.bind('<Escape>', self.KEY_ESC)
         self.master.bind('<F1>', self.KEY_F1)
         self.master.bind('<F2>', self.KEY_F2)
-        self.master.bind('<F3>', self.KEY_F3)
         self.master.bind('<F4>', self.KEY_F4)
         self.master.bind('<F5>', self.KEY_F5) #self.Recalculate_Click)
         self.master.bind('<Control-g>', self.KEY_CTRL_G)
@@ -601,14 +600,15 @@ class Application(Frame):
         #####################################################
 
         home_config = os.path.expanduser("~") + "/" + config_file
-        print home_config
+
+        # print home_config #DEBUG_LINE
 
         if ( os.path.isfile(config_file) ):
             self.Open_G_Code_File(config_file)
-            print "loaded config file"
+            #print "loaded config file"
         elif ( os.path.isfile(home_config) ):
             self.Open_G_Code_File(home_config)
-            print "loaded home config"
+            #print "loaded home config"
 
         opts, args = None, None
         try:
@@ -802,9 +802,8 @@ class Application(Frame):
         r_feed = 5000.00
 
         if rough_flag == 0:
-            ######################################################
-            tool_type     =  self.tool.get()
 
+            tool_type     =  self.tool.get()
             tool_diameter =  float(self.dia.get())
             rough_depth   =  0.0
             rough_offset  =  0.0
@@ -813,15 +812,14 @@ class Application(Frame):
             step          =  max(1, int(floor( float(self.stepover.get()) / pixel_size)))
 
             edge_offset   = 0
-            ######################################################
-            if self.tool.get() == "Flat":
+
+            if tool_type == "Flat":
                 TOOL = make_tool_shape(endmill, tool_diameter, pixel_size)
-            elif self.tool.get() == "V":
+            elif tool_type == "V":
                 v_angle = float(self.v_angle.get())
                 TOOL = make_tool_shape(vee_common(v_angle), tool_diameter, pixel_size)
             else: #"Ball"
                 TOOL = make_tool_shape(ball_tool, tool_diameter, pixel_size)
-            ######################################################
 
             rows = 0
             columns = 0
@@ -833,14 +831,11 @@ class Application(Frame):
             if self.scanpat.get() == "C then R":
                 columns_first = 1
 
-            ######################################################
             converter = self.scandir.get()
             lace_bound_val = self.lace_bound.get()
             ### END FINISH CUT STUFF ###
         else:
-            ######################################################
             tool_type     =  self.rough_tool.get()
-
             rough_depth   =  float(self.rough_depth_pp.get())
             rough_offset  =  float(self.rough_offset.get())
             tool_diameter =  float(self.rough_dia.get())
@@ -849,10 +844,10 @@ class Application(Frame):
             p_feed     =  float(self.rough_p_feed.get())
             step          =  max(1, int(floor( float(self.rough_stepover.get()) / pixel_size)))
             edge_offset = max(0, (tool_diameter - finish_dia)/2.0)
-            ######################################################
-            if self.rough_tool.get() == "Flat":
+
+            if tool_type == "Flat":
                 TOOL = make_tool_shape(endmill, tool_diameter, pixel_size, rough_offset)
-            elif self.tool.get() == "V":
+            elif tool_type == "V":
                 v_angle = float(self.rough_v_angle.get())
                 TOOL = make_tool_shape(vee_common(v_angle), tool_diameter, pixel_size, rough_offset)
             else: #"Ball"
@@ -870,7 +865,6 @@ class Application(Frame):
 
             converter = self.rough_scandir.get()
             lace_bound_val = self.lace_bound.get()
-
         ### END ROUGHING STUFF ###
 
         if converter == "Positive":
@@ -896,14 +890,14 @@ class Application(Frame):
             conv_index = 2
             fmessage("Converter Error: Setting to, Alternating")
 
-        if rows: 
+        if rows:
             convert_rows = convert_makers[conv_index]()
-        else: 
+        else:
             convert_rows = None
 
-        if columns: 
+        if columns:
             convert_cols = convert_makers[conv_index]()
-        else: 
+        else:
             convert_cols = None
 
         if lace_bound_val != "None" and rows and columns:
@@ -914,7 +908,9 @@ class Application(Frame):
                 convert_rows = Reduce_Scan_Lace(convert_rows, slope, step+1)
             else:
                 convert_cols = Reduce_Scan_Lace(convert_cols, slope, step+1)
+
             if lace_bound_val == "Full":
+
                 if columns_first:
                     convert_cols = Reduce_Scan_Lace(convert_cols, slope, step+1)
                 else:
@@ -928,6 +924,7 @@ class Application(Frame):
         if self.cuttop.get() != True:
             if rows == 1:
                 convert_rows = Reduce_Scan_Lace_new(convert_rows, toptol, 1)
+
             if columns == 1:
                 convert_cols = Reduce_Scan_Lace_new(convert_cols, toptol, 1)
 
@@ -938,7 +935,7 @@ class Application(Frame):
         else:
             Entry_cut   = SimpleEntryCut(r_feed)
 
-        if self.normalize.get():
+        if self.normalize.get(): #FIXME seems that the normalization in disabled
             pass
             a = MAT.min()
             b = MAT.max()
@@ -1072,7 +1069,7 @@ class Application(Frame):
         STOP_CALC=1
 
     # Left Column #
-    #############################
+
     def Entry_Yscale_Check(self):
         try:
             value = float(self.yscale.get())
@@ -1085,9 +1082,10 @@ class Application(Frame):
         except:
             return 3     # Value not a number
         return 0         # Value is a valid number
+
     def Entry_Yscale_Callback(self, varName, index, mode):
         self.entry_set(self.Entry_Yscale, self.Entry_Yscale_Check(), new=1)
-    #############################
+
     def Entry_Toptol_Check(self):
         try:
             value = float(self.toptol.get())
@@ -1097,15 +1095,12 @@ class Application(Frame):
         except:
             return 3     # Value not a number
         return 0         # Value is a valid number
+
     def Entry_Toptol_Callback(self, varName, index, mode):
         self.entry_set(self.Entry_Toptol, self.Entry_Toptol_Check(), new=1)
-    #############################
-    # End Left Column #
-    #############################
 
-    #############################
-    # Start Right Column #
-    #############################
+    # Start Right Column
+
     def Entry_ToolDIA_Check(self):
         try:
             value = float(self.dia.get())
@@ -1115,9 +1110,10 @@ class Application(Frame):
         except:
             return 3     # Value not a number
         return 0         # Value is a valid number
+
     def Entry_ToolDIA_Callback(self, varName, index, mode):
         self.entry_set(self.Entry_ToolDIA, self.Entry_ToolDIA_Check(), new=1)
-    #############################
+
     def Entry_Vangle_Check(self):
         try:
             value = float(self.v_angle.get())
@@ -1127,9 +1123,10 @@ class Application(Frame):
         except:
             return 3     # Value not a number
         return 0         # Value is a valid number
+
     def Entry_Vangle_Callback(self, varName, index, mode):
         self.entry_set(self.Entry_Vangle, self.Entry_Vangle_Check(), new=1)
-    #############################
+
     def Entry_Feed_Check(self):
         try:
             value = float(self.f_feed.get())
@@ -1139,9 +1136,10 @@ class Application(Frame):
         except:
             return 3     # Value not a number
         return 1         # Value is a valid number changes do not require recalc
+
     def Entry_Feed_Callback(self, varName, index, mode):
         self.entry_set(self.Entry_Feed,self.Entry_Feed_Check(), new=1)
-    #############################
+
     def Entry_p_feed_Check(self):
         try:
             value = float(self.p_feed.get())
@@ -1151,9 +1149,10 @@ class Application(Frame):
         except:
             return 3     # Value not a number
         return 0         # Value is a valid number
+
     def Entry_p_feed_Callback(self, varName, index, mode):
         self.entry_set(self.Entry_p_feed, self.Entry_p_feed_Check(), new=1)
-    #############################
+
     def Entry_StepOver_Check(self):
         try:
             value = float(self.stepover.get())
@@ -1163,9 +1162,10 @@ class Application(Frame):
         except:
             return 3     # Value not a number
         return 0         # Value is a valid number
+
     def Entry_StepOver_Callback(self, varName, index, mode):
         self.entry_set(self.Entry_StepOver, self.Entry_StepOver_Check(), new=1)
-    #############################
+
     def Entry_Zsafe_Check(self):
         try:
             value = float(self.z_safe.get())
@@ -1175,9 +1175,10 @@ class Application(Frame):
         except:
             return 3     # Value not a number
         return 1         # Value is a valid number changes do not require recalc
+
     def Entry_Zsafe_Callback(self, varName, index, mode):
         self.entry_set(self.Entry_Zsafe,self.Entry_Zsafe_Check(), new=1)
-    #############################
+
     def Entry_Zcut_Check(self):
         try:
             value = float(self.z_cut.get())
@@ -1187,15 +1188,11 @@ class Application(Frame):
         except:
             return 3     # Value not a number
         return 1         # Value is a valid number changes do not require recalc
+
     def Entry_Zcut_Callback(self, varName, index, mode):
         self.entry_set(self.Entry_Zcut,self.Entry_Zcut_Check(), new=1)
-    #############################
-    # End Right Column #
-    #############################
 
-    #############################
     # Start ROUGH Setttings     #
-    #############################
 
     def ROUGH_Entry_ToolDIA_Check(self):
         try:
@@ -1219,6 +1216,7 @@ class Application(Frame):
         except:
             return 3     # Value not a number
         return 0         # Value is a valid number
+
     def ROUGH_Entry_Vangle_Callback(self, varName, index, mode):
         self.entry_set(self.ROUGH_Entry_Vangle, self.ROUGH_Entry_Vangle_Check(), new=1)
 
@@ -1231,6 +1229,7 @@ class Application(Frame):
         except:
             return 3     # Value not a number
         return 1         # Value is a valid number changes do not require recalc
+
     def ROUGH_Entry_Feed_Callback(self, varName, index, mode):
         self.entry_set(self.ROUGH_Entry_Feed,self.ROUGH_Entry_Feed_Check(), new=1)
 
@@ -1243,6 +1242,7 @@ class Application(Frame):
         except:
             return 3     # Value not a number
         return 0         # Value is a valid number
+
     def ROUGH_Entry_p_feed_Callback(self, varName, index, mode):
         self.entry_set(self.ROUGH_Entry_p_feed, self.ROUGH_Entry_p_feed_Check(), new=1)
 
@@ -1255,6 +1255,7 @@ class Application(Frame):
         except:
             return 3     # Value not a number
         return 0         # Value is a valid number
+
     def ROUGH_Entry_StepOver_Callback(self, varName, index, mode):
         self.entry_set(self.ROUGH_Entry_StepOver, self.ROUGH_Entry_StepOver_Check(), new=1)
 
@@ -1267,6 +1268,7 @@ class Application(Frame):
         except:
             return 3     # Value not a number
         return 0         # Value is a valid number
+
     def ROUGH_Entry_Roffset_Callback(self, varName, index, mode):
         self.entry_set(self.ROUGH_Entry_Roffset, self.ROUGH_Entry_Roffset_Check(), new=1)
 
@@ -1279,14 +1281,13 @@ class Application(Frame):
         except:
             return 3     # Value not a number
         return 0         # Value is a valid number
+
     def ROUGH_Entry_Rdepth_Callback(self, varName, index, mode):
         self.entry_set(self.ROUGH_Entry_Rdepth, self.ROUGH_Entry_Rdepth_Check(), new=1)
 
     # End ROUGH setttings       #
-    #############################
 
-
-    def Entry_Tolerance_Check(self):
+   def Entry_Tolerance_Check(self):
         try:
             value = float(self.tolerance.get())
             if  value <= 0.0:
@@ -1295,6 +1296,7 @@ class Application(Frame):
         except:
             return 3     # Value not a number
         return 0         # Value is a valid number
+
     def Entry_Tolerance_Callback(self, varName, index, mode):
         self.entry_set(self.Entry_Tolerance,self.Entry_Tolerance_Check(), new=1)
 
@@ -1307,12 +1309,10 @@ class Application(Frame):
         except:
             return 3     # Value not a number
         return 0         # Value is a valid number
+
     def Entry_ContAngle_Callback(self, varName, index, mode):
         self.entry_set(self.Entry_ContAngle,self.Entry_ContAngle_Check(), new=1)
-    #############################
 
-    ##########################################################################
-    ##########################################################################
     def Check_All_Variables(self):
         MAIN_error_cnt= \
         self.entry_set(self.Entry_Yscale, self.Entry_Yscale_Check()    ,2) +\
@@ -1420,7 +1420,7 @@ class Application(Frame):
         ident = "cfg_set"
         for line in fin:
             if ident in line:
-                print line
+                # print line #DEBUG_LINE
                 # BOOL
                 if   "show_axis"  in line:
                     self.show_axis.set(line[line.find("show_axis"):].split()[1])
@@ -1647,8 +1647,6 @@ class Application(Frame):
                 vcalc_status.destroy()
             except:
                 pass
-    ################
-    ################
 
     def menu_File_Quit(self):
         if message_ask_ok_cancel("Exit", "Exiting...."):
@@ -1689,9 +1687,6 @@ class Application(Frame):
     def KEY_F2(self, event):
         self.GEN_Settings_Window()
 
-    def KEY_F3(self, event):
-        self.ROUGH_Settings_Window()
-
     def KEY_F4(self, event):
         pass
 
@@ -1717,9 +1712,7 @@ class Application(Frame):
             self.x, self.y = x,y
 
         if abs(self.w-w)>10 or abs(self.h-h)>10 or update==1:
-            ######################
             #  Form changed Size (resized) adjust as required #
-            ######################
             self.w = w
             self.h = h
 
@@ -1784,8 +1777,7 @@ class Application(Frame):
                 self.Entry_Toptol.place(x=x_entry_L, y=Yloc, width=w_entry, height=23)
                 # End Left Column #
 
-
-                # Start Right Column
+                # Start Center Column
                 w_label=100
                 w_entry=60
                 w_units=40
@@ -1861,7 +1853,7 @@ class Application(Frame):
                 Yloc = Yloc + 50
                 self.Save_Button.place(x=x_label_R, y=Yloc, width=95, height=30)
 
-                ## third column -Roughing settings
+                ## Right column - Roughing settings
 
                 x_label_3 = self.w - 260
                 x_entry_3 = x_label_3 + w_label + 10
@@ -2075,10 +2067,10 @@ class Application(Frame):
         axis_length = int(self.wim/4)
 
         PlotScale =  self.SCALE
-        axis_x1 =  cszw/2 + (-x_zero             ) * PlotScale
-        axis_x2 =  cszw/2 + ( axis_length-x_zero ) * PlotScale
-        axis_y1 =  cszh/2 - (-y_zero             ) * PlotScale
-        axis_y2 =  cszh/2 - ( axis_length-y_zero ) * PlotScale
+        axis_x1 =  cszw/2 + (-x_zero) * PlotScale
+        axis_x2 =  cszw/2 + (axis_length-x_zero) * PlotScale
+        axis_y1 =  cszh/2 - (-y_zero) * PlotScale
+        axis_y2 =  cszh/2 - (axis_length-y_zero) * PlotScale
 
         for seg in self.segID:
             self.PreviewCanvas.delete(seg)
@@ -2489,7 +2481,7 @@ class Gcode:
                  r_feed = 0, c_feed = 0,p_feed =0,
                  no_arcs = False,
                  grbl = False):
-                 
+
         self.lastx = self.lasty = self.lastz = self.lasta = None
         self.lastgcode = self.lastfeed = None
         self.homeheight = homeheight
@@ -2520,8 +2512,12 @@ class Gcode:
 
     def begin(self):
         """\
-This function moves to the safety height, sets many modal codes to default
-values, turns the spindle on at 3000RPM
+This function:
+- write the header of the Gcode File
+- sets some modal codes to default values
+- turns the spindle on at 3000RPM
+- moves to the safety height
+
 """
         if self.header == "":
             self.write("(no header)")
@@ -2539,6 +2535,7 @@ values, turns the spindle on at 3000RPM
         if not self.no_arcs:
             self.write("G91.1")
 
+        # move to safety height at rapid feed
         self.write("G0 Z%.3f F%.3f" % (self.safetyheight,self.r_feed))
 
     def flush(self,feed=0,msg=""):
@@ -2560,8 +2557,8 @@ will examine fewer points per run.
 
         for move, (x, y, z), cent in douglas(self.cuts, self.tolerance, self.plane):
             if cent:
-                if GC_DEBUG > 1:
-                    print "CENT"
+                #if GC_DEBUG > 1:
+                #    print "CENT"
 
                 self.write("%s X%.4f Y%.4f Z%.4f %s F%.4f" % (move, x, y, z, cent,self.c_feed))
                 self.lastgcode = None
@@ -2578,13 +2575,11 @@ will examine fewer points per run.
         """
         Write postamble or "M2" if there is no postamble
         """
-        #self.flush("End") # We do by hand setting the correct feed rate
-        self.safety("END")
+        self.safety("END",self.safetyheight)
         if self.postamble=="":
             self.write("M2")
         else:
             self.write(self.postamble)
-
 
     def exactpath(self):
         """\
@@ -2651,13 +2646,12 @@ the simplification algorithm may still skip over specified points.
         if cmd:
             self.write(cmd)
 
-    def set_feed(self, feed):
-        #"Set the feed rate to the given value"
-        # self.flush("Feed") # Maybe we have to eliminate this function
-        self.write("F%.4f" % feed)
-
     def cut(self, x=None, y=None, z=None):
-        #"Perform a cutting move at the specified feed rate to the specified coordinates"
+        """\
+        Store a cutting move in the self.cuts list
+        The list is flushed by the flush command that reduce the
+        x,y,z coordinates to have a more compat gcode file
+        """
         if self.cuts:
             lastx, lasty, lastz = self.cuts[-1]
         else:
@@ -2667,21 +2661,15 @@ the simplification algorithm may still skip over specified points.
         if z is None: z = lastz
         self.cuts.append([x,y,z])
 
-    def p_cut(self, x=None, y=None, z=None):
-        print "Coord = ",x,y,z
-
-    def home(self):
-        #"Go to the 'home' height at rapid speed"
-        # Maybe eliminate
-        self.flush("Home")
-        self.rapid(z=self.homeheight)
-
-    def safety(self,msg=""):
+    def safety(self, msg="", safety_h = 0):
         #"Go to the 'safety' height at rapid speed"
-        #self.flush("Safety " + msg) # We flush by hand
+        if safety_h == 0:
+            s_hs = self.safetyheight
+        else:
+            s_hs = safety_h
         if GC_DEBUG > 0:
             self.comment("S " + msg)
-        self.rapid(z=self.safetyheight,feed=self.r_feed)
+        self.rapid(z=s_hs, feed=self.r_feed)
 
 
 ################################################################################
@@ -2720,7 +2708,7 @@ def make_tool_shape(f, wdia, resp, rough_offset=0.0):
             if r < wrad:
                 z = f(r, wrad)
                 l.append(z)
-    #######################
+
     TOOL = Image_Matrix(dia,dia)
     l = []
     temp = []
@@ -2897,7 +2885,6 @@ class Reduce_Scan_Lace_new:
 
     def reset(self):
         self.converter.reset()
-#############
 
 unitcodes = ['G20', 'G21']
 convert_makers = [ Convert_Scan_Increasing, Convert_Scan_Decreasing, Convert_Scan_Alternating, Convert_Scan_Upmill, Convert_Scan_Downmill ]
@@ -2956,7 +2943,7 @@ class Converter:
         splitpixels = 0
         if splitstep > epsilon:
             pixelstep   = int(floor(pixelstep * splitstep * 2))
-            splitpixels = int(floor(pixelstep * splitstep    ))
+            splitpixels = int(floor(pixelstep * splitstep))
         self.pixelstep   = pixelstep
         self.splitpixels = splitpixels
 
@@ -2982,407 +2969,114 @@ class Converter:
         if self.convert_cols != None or self.convert_rows != None:
             cnt_border = 2
         self.cnt_total = (row_cnt + col_cnt + cnt_border )* cnt_mult
-        print row_cnt,col_cnt
         self.cnt = 0.0
 
-    def one_pass(self,depth):
-        g = self.g
-
-        g.comment("-- Cut Pass at %.4f --" % (depth))
-
-        if self.convert_cols and self.cols_first_flag:
-            self.g.set_plane(19)
-            self.mill_cols(self.convert_cols, True)
-
-            if self.convert_rows:
-                g.safety("OP-CC-CF")
-
-        if self.convert_rows:
-            self.g.set_plane(18)
-            self.mill_rows(self.convert_rows, not self.cols_first_flag)
-
-        if self.convert_cols and not self.cols_first_flag:
-            self.g.set_plane(19)
-
-            if self.convert_rows:
-                g.safety("OP-CC-NFF")
-
-            self.mill_cols(self.convert_cols, not self.convert_rows)
-
-        g.safety("OPS")
-
-        ## mill border ##
-        if self.convert_cols:
-            self.convert_cols.reset()
-
-        if self.convert_rows:
-            self.convert_rows.reset()
-
-        step_save = self.pixelstep
-        self.pixelstep = max(self.w1, self.h1) + 1
-
-        if self.border == 1 and not self.convert_rows:
-            if self.convert_cols:
-                self.g.set_plane(18)
-                self.mill_rows(self.convert_cols, True)
-                g.safety("OP-B1-NCR")
-
-        if self.border == 1 and not self.convert_cols:
-            if self.convert_rows:
-                self.g.set_plane(19)
-                self.mill_cols(self.convert_rows, True)
-                g.safety("OP-B1-NCC")
-
-        self.pixelstep = step_save
-
-        if self.convert_cols:
-            self.convert_cols.reset()
-
-        if self.convert_rows:
-            self.convert_rows.reset()
-
-        g.safety("End Cut Pass")
-
-    def convert(self):
-        output_gcode = []
+        self.entry_height = 0 + self.rh_delta # FIXME is conservative and brute
         self.cut_pass = []
-        self.g = g = Gcode(safetyheight=self.safetyheight,
-                           tolerance=self.tolerance,
-                           units=self.units,
-                           header=self.header,
-                           preamble=self.preamble,
-                           postamble=self.postamble,
-                           target=lambda s: output_gcode.append(s),
-                           r_feed = self.r_feed,
-                           c_feed = self.c_feed,
-                           p_feed = self.p_feed,
-                           no_arcs = self.no_arcs,
-                           grbl = self.grbl_flag)
-
-        g.begin()
-
-        if not self.grbl_flag:
-            g.continuous(self.tolerance)
-        else:
-            pass
-
-        if self.rh_flag:
-            g.comment("Roughing code")
-            
-            r = -self.rh_delta
-            m = self.image.min()
-            
-            while r > m:
-                self.rd = r
-                self.one_pass(r)
-                r = r - self.rh_delta
-            if r < m + epsilon:
-                self.rd = m
-                self.one_pass(m)
-        else:
-            self.rd = self.image.min()
-            self.one_pass(self.rd)
-
-        g.end()
-
-        return output_gcode
-
-    def get_z(self, x, y):
-        try:
-            return min(0, max(self.rd, self.cache[x,y]))
-        except KeyError:
-            self.cache[x,y] = d = self.image.height_calc(x,y,self.tool_shape)
-            return min(0.0, max(self.rd, d))
-
-    def get_dz_dy(self, x, y):
-        y1 = max(0, y-1)
-        y2 = min(self.image.shape[0]-1, y+1)
-        dy = self.pixelsize * (y2-y1)
-        return (self.get_z(x, y2) - self.get_z(x, y1)) / dy
-
-    def get_dz_dx(self, x, y):
-        x1 = max(0, x-1)
-        x2 = min(self.image.shape[1]-1, x+1)
-        dx = self.pixelsize * (x2-x1)
-        return (self.get_z(x2, y) - self.get_z(x1, y)) / dx
-
-    def frange(self,start, stop, step):
-        out = []
-        i = start
-        while i < stop:
-            out.append(i)
-            i += step
-        return out
-
-    def mill_rows(self, convert_scan, primary):
-        global STOP_CALC
-           
-        w1 = self.w1
-        h1 = self.h1
-        pixelsize = self.pixelsize
-        pixelstep = self.pixelstep
-        pixel_offset = int(ceil(self.edge_offset / pixelsize))
-
-        jrange = self.frange(self.splitpixels+pixel_offset, w1-pixel_offset, pixelstep)
-
-        if jrange[0] != pixel_offset:
-            jrange.insert(0,pixel_offset)
-            
-        if w1-1-pixel_offset not in jrange:
-            jrange.append(w1-1-pixel_offset)
-
-        irange = range(pixel_offset,h1-pixel_offset)
-
-        r_cnt = 0
-
-        for j in jrange:
-            self.cnt = self.cnt+1
-            r_cnt = r_cnt + 1
-            progress(self.cnt, self.cnt_total, self.START_TIME, self.BIG )
-            y = (w1-j-1) * pixelsize + self.yoffset
-            scan = []
-
-            for i in irange:
-                self.BIG.update()
-                if STOP_CALC: return
-                x = i * pixelsize + self.xoffset
-                z = self.get_z(i, j)
-                   
-                milldata = (i, (x, y, z),self.get_dz_dx(i, j),
-                            self.get_dz_dy(i, j))
-
-                scan.append(milldata)
-
-            for flag, points in convert_scan(primary, scan):
-                if flag:
-                    self.entry_cut(self, points[0][0], j, points)
-                p_f = 0
-                for p in points:
-                    if p_f:
-                        self.g.cut(*p[1])
-                    else:
-                        self.g.move_common("G1", p[1][0],p[1][1],p[1][2], feed = self.p_feed)
-                        p_f = 1
-
-            self.g.flush(feed = self.c_feed, msg = "- Row %s" % (r_cnt) )
-
-    def mill_cols(self, convert_scan, primary):
-        global STOP_CALC
-        w1 = self.w1
-        h1 = self.h1
-        pixelsize = self.pixelsize
-        pixelstep = self.pixelstep
-        pixel_offset = int(ceil(self.edge_offset / pixelsize))
-        jrange = self.frange(self.splitpixels+pixel_offset, h1-pixel_offset, pixelstep)
-        if jrange[0] != pixel_offset: jrange.insert(0,pixel_offset)
-        if h1-1-pixel_offset not in jrange: jrange.append(h1-1-pixel_offset)
-
-        irange = range(pixel_offset,w1-pixel_offset)
-
-        if h1-1-pixel_offset not in jrange: jrange.append(h1-1-pixel_offset)
-        jrange.reverse()
-
-        for j in jrange:
-            self.cnt = self.cnt+1
-            progress(self.cnt, self.cnt_total, self.START_TIME, self.BIG )
-            x = j * pixelsize + self.xoffset
-            scan = []
-            for i in irange:
-                self.BIG.update()
-                if STOP_CALC: return
-                y = (w1-i-1) * pixelsize + self.yoffset
-                milldata = (i, (x, y, self.get_z(j, i)),
-                            self.get_dz_dy(j, i), self.get_dz_dx(j, i))
-                scan.append(milldata)
-            for flag, points in convert_scan(primary, scan):
-                if flag:
-                    self.entry_cut(self, j, points[0][0], points)
-                for p in points:
-                    self.g.cut(*p[1])
-            self.g.flush(feed = self.c_feed, msg = "Mill Col")
-
-################
-
-class Converter_new:
-    def __init__(self, BIG,
-                 image, units, tool_shape, pixel_size, pixelstep,
-                 safetyheight, tolerance,feed,
-                 convert_rows, convert_cols, cols_first_flag,
-                 border, entry_cut, roughing_delta,rh_flag,
-                 xoffset, yoffset, splitstep, header,
-                 preamble, postamble, edge_offset,
-                 no_arcs,grbl):
-
-        self.BIG = BIG  # Probably the Application window reference
-        self.image = image
-        self.units = units
-        self.tool_shape = tool_shape
-        self.pixelsize = pixel_size
-        self.safetyheight = safetyheight
-        self.tolerance = tolerance
-        self.convert_rows = convert_rows
-        self.convert_cols = convert_cols
-        self.cols_first_flag = cols_first_flag
-        self.entry_cut = entry_cut
-        self.rh_delta = roughing_delta
-        self.rh_flag = rh_flag
-        self.header = header
-        self.preamble = preamble
-        self.postamble = postamble
-        self.border = border
-        self.edge_offset = edge_offset
-        self.no_arcs = no_arcs
-        self.grbl_flag = grbl
-
-        self.r_feed = feed[0]
-        self.c_feed = feed[1]
-        self.p_feed = feed[2]
-
-        self.xoffset = xoffset
-        self.yoffset = yoffset
-
-        # Split step stuff
-        splitpixels = 0
-        if splitstep > epsilon:
-            pixelstep   = int(floor(pixelstep * splitstep * 2))
-            splitpixels = int(floor(pixelstep * splitstep    ))
-        self.pixelstep   = pixelstep
-        self.splitpixels = splitpixels
-
-        self.cache = {}
-
-        w, h = self.w, self.h = image.shape
-        self.h1 = h
-        self.w1 = w
-
-        ### Percent complete stuff ###
-        self.START_TIME=time()
-        row_cnt=0
-        cnt_border = 0
-        if self.convert_rows != None:
-            row_cnt = ceil( self.w1 / pixelstep) + 2
-        col_cnt = 0
-        if self.convert_cols != None:
-            col_cnt = ceil( self.h1 / pixelstep) + 2
-        if self.rh_delta != 0:
-            cnt_mult = ceil(self.image.min() / -self.rh_delta) + 1
-        else:
-            cnt_mult = 1
-        if self.convert_cols != None or self.convert_rows != None:
-            cnt_border = 2
-        self.cnt_total = (row_cnt + col_cnt + cnt_border )* cnt_mult
-        print row_cnt,col_cnt
-        self.cnt = 0.0
-
-    def one_pass(self,depth):
-        g = self.g
-
-        g.comment("-- Cut Pass at %.4f --" % (depth))
-
-        if self.convert_cols and self.cols_first_flag:
-            self.g.set_plane(19)
-            self.mill_cols(self.convert_cols, True)
-
-            if self.convert_rows:
-                g.safety("OP-CC-CF")
-
-        if self.convert_rows:
-            self.g.set_plane(18)
-            self.mill_rows(self.convert_rows, not self.cols_first_flag)
-
-        if self.convert_cols and not self.cols_first_flag:
-            self.g.set_plane(19)
-
-            if self.convert_rows:
-                g.safety("OP-CC-NFF")
-
-            self.mill_cols(self.convert_cols, not self.convert_rows)
-
-        g.safety("OPS")
-
-        ## mill border ##
-        if self.convert_cols:
-            self.convert_cols.reset()
-
-        if self.convert_rows:
-            self.convert_rows.reset()
-
-        step_save = self.pixelstep
-        self.pixelstep = max(self.w1, self.h1) + 1
-
-        if self.border == 1 and not self.convert_rows:
-            if self.convert_cols:
-                self.g.set_plane(18)
-                self.mill_rows(self.convert_cols, True)
-                g.safety("OP-B1-NCR")
-
-        if self.border == 1 and not self.convert_cols:
-            if self.convert_rows:
-                self.g.set_plane(19)
-                self.mill_cols(self.convert_rows, True)
-                g.safety("OP-B1-NCC")
-
-        self.pixelstep = step_save
-
-        if self.convert_cols:
-            self.convert_cols.reset()
-
-        if self.convert_rows:
-            self.convert_rows.reset()
-
-        g.safety("End Cut Pass")
-
-    def convert(self):
-        output_gcode = []
-        self.cut_pass = []
-        self.g = g = Gcode(safetyheight=self.safetyheight,
-                           tolerance=self.tolerance,
-                           units=self.units,
-                           header=self.header,
-                           preamble=self.preamble,
-                           postamble=self.postamble,
-                           target=lambda s: output_gcode.append(s),
-                           r_feed = self.r_feed,
-                           c_feed = self.c_feed,
-                           p_feed = self.p_feed,
-                           no_arcs = self.no_arcs,
-                           grbl = self.grbl_flag)
-        g.begin()
-
-        if not self.grbl_flag:
-            g.continuous(self.tolerance)
-        else:
-            pass
 
         if self.rh_flag:
             r = -self.rh_delta
             m = self.image.min()
-            
+
             while r > m:
                 self.cut_pass.append(r)
                 r = r - self.rh_delta
 
             if r < m + epsilon:
-                self.cut_pass.append(m) 
-                           
-            print self.cut_pass
-         
-        if self.rh_flag:
+                self.cut_pass.append(m)
+
+            #print len(self.cut_pass),self.cut_pass #DEBUG_LINE
+
+    def one_pass(self,depth,idh):
+        g = self.g
+        self.idh = idh
+
+        g.comment("Cut Pass at %.4f" % (depth))
+
+        if self.convert_cols and self.cols_first_flag:
+            self.g.set_plane(19)
+            self.mill_cols(self.convert_cols, True)
+
+            if self.convert_rows:
+                g.safety("O-CC-CF",self.entry_height)
+
+        if self.convert_rows:
+            self.g.set_plane(18)
+            self.mill_rows(self.convert_rows, not self.cols_first_flag)
+
+        if self.convert_cols and not self.cols_first_flag:
+            self.g.set_plane(19)
+
+            if self.convert_rows:
+                g.safety("O-CC-NCF",self.entry_height)
+
+            self.mill_cols(self.convert_cols, not self.convert_rows)
+
+        g.safety("OPS",self.entry_height)
+
+        ## mill border ##
+        if self.convert_cols:
+            self.convert_cols.reset()
+
+        if self.convert_rows:
+            self.convert_rows.reset()
+
+        step_save = self.pixelstep
+        self.pixelstep = max(self.w1, self.h1) + 1
+
+        if self.border == 1 and not self.convert_rows:
+            if self.convert_cols:
+                self.g.set_plane(18)
+                self.mill_rows(self.convert_cols, True)
+                g.safety("OP-B1-NCR",self.entry_height)
+
+        if self.border == 1 and not self.convert_cols:
+            if self.convert_rows:
+                self.g.set_plane(19)
+                self.mill_cols(self.convert_rows, True)
+                g.safety("OP-B1-NCC",self.entry_height)
+
+        self.pixelstep = step_save
+
+        if self.convert_cols:
+            self.convert_cols.reset()
+
+        if self.convert_rows:
+            self.convert_rows.reset()
+
+        g.safety("End Cut Pass",self.entry_height)
+
+    def convert(self):
+        output_gcode = []
+        self.g = g = Gcode(safetyheight=self.safetyheight,
+                           tolerance=self.tolerance,
+                           units=self.units,
+                           header=self.header,
+                           preamble=self.preamble,
+                           postamble=self.postamble,
+                           target=lambda s: output_gcode.append(s),
+                           r_feed = self.r_feed,
+                           c_feed = self.c_feed,
+                           p_feed = self.p_feed,
+                           no_arcs = self.no_arcs,
+                           grbl = self.grbl_flag)
+        g.begin()
+
+        if not self.grbl_flag:
+            g.continuous(self.tolerance)
+        else:
+            pass
+
+        if len(self.cut_pass) > 0:
             g.comment("Roughing code")
-            
-            r = -self.rh_delta
-            m = self.image.min()
-            
-            while r > m:
-                self.rd = r
-                self.one_pass(r)
-                r = r - self.rh_delta
-            if r < m + epsilon:
-                self.rd = m
-                self.one_pass(m)
+
+            for idh,h_pass in enumerate(self.cut_pass) :
+                self.rd = h_pass
+                self.one_pass(self.rd,idh)
+
         else:
             self.rd = self.image.min()
-            self.one_pass(self.rd)
+            self.one_pass(self.rd,0)
 
         g.end()
 
@@ -3417,7 +3111,7 @@ class Converter_new:
 
     def mill_rows(self, convert_scan, primary):
         global STOP_CALC
-            
+
         w1 = self.w1
         h1 = self.h1
         pixelsize = self.pixelsize
@@ -3428,7 +3122,7 @@ class Converter_new:
 
         if jrange[0] != pixel_offset:
             jrange.insert(0,pixel_offset)
-            
+
         if w1-1-pixel_offset not in jrange:
             jrange.append(w1-1-pixel_offset)
 
@@ -3442,37 +3136,37 @@ class Converter_new:
             progress(self.cnt, self.cnt_total, self.START_TIME, self.BIG )
             y = (w1-j-1) * pixelsize + self.yoffset
             scan = []
-            h_flag = 0
-                
+
             for i in irange:
-                print i
+                #print j,i #DEBUG_LINE
                 self.BIG.update()
                 if STOP_CALC: return
                 x = i * pixelsize + self.xoffset
                 z = self.get_z(i, j)
 
-                if self.rh_flag:                
-                    if z > self.rd:
-                        if DEBUG_CALC > 0:
-                            print "Check ", i, z, self.rd
-                        h_flag = 1
-
-                    
                 milldata = (i, (x, y, z),self.get_dz_dx(i, j),
                             self.get_dz_dy(i, j))
 
                 scan.append(milldata)
 
             if self.rh_flag:
+                if  max([x[1][2] for x in scan]) > self.rd:
+                    m_h = max([x[1][2] for x in scan])
+                    f_scan = []
+                    #print self.rd,self.cut_pass[self.idh-1],self.idh
+                    for unp in scan:
+                        if unp[1][2] > self.cut_pass[self.idh-1]:
+                            element = (unp[0],(unp[1][0],unp[1][1],m_h),unp[2],unp[3])
+                            f_scan.append(element)
+                            #print j,i,self.rd,self.cut_pass[self.idh-1],m_h," >> ",unp, " >> ",element
+                        else:
+                            f_scan.append(unp)
+                    scan = f_scan
 
-                if h_flag == 1 :
-                    print "H_FLAG ", i,self.cut_pass, self.rd, scan
-
-    
             for flag, points in convert_scan(primary, scan):
 
                 if flag:
-                    self.entry_cut(self, points[0][0], j, points)
+                    self.entry_cut(self, points[0][0], j, points,self.entry_height)
 
                 p_f = 0
 
@@ -3486,6 +3180,7 @@ class Converter_new:
             self.g.flush(feed = self.c_feed, msg = "- Row %s" % (r_cnt) )
 
     def mill_cols(self, convert_scan, primary):
+        # TODO modify to use the roughing algorithm
         global STOP_CALC
         w1 = self.w1
         h1 = self.h1
@@ -3515,35 +3210,28 @@ class Converter_new:
                 scan.append(milldata)
             for flag, points in convert_scan(primary, scan):
                 if flag:
-                    self.entry_cut(self, j, points[0][0], points)
+                    self.entry_cut(self, j, points[0][0], points,self.entry_height)
                 for p in points:
                     self.g.cut(*p[1])
             self.g.flush(feed = self.c_feed, msg = "Mill Col")
 
-
-
-################
-
-
 def generate(*args, **kw):
     """
-    Is called from Apllication.WriteGCode around line 1020
+    Is called from Application.WriteGCode around line 1020
     Call the Converter.convert() function around line 2900
     and return the Gcode generated
     """
-    #return Converter(*args, **kw).convert()
-    return Converter_new(*args, **kw).convert()
+    return Converter(*args, **kw).convert()
 
 ### Definition of the Entry_Cut types
-
 
 class SimpleEntryCut:
     def __init__(self, feed):
         self.feed = feed
 
-    def __call__(self, conv, i0, j0, points):
+    def __call__(self, conv, i0, j0, points,safety_h):
         p = points[0][1]
-        conv.g.safety("SEC")
+        conv.g.safety("SEC",safety_h)
         conv.g.rapid(p[0], p[1],feed=self.feed)
 
 
@@ -3616,7 +3304,7 @@ class ArcEntryCut:
 
             conv.g.flush(feed=self.feed,msg = "AEC")
             conv.g.lastgcode = None
-            
+
             if cx > 0:
                 #conv.g.write("G3 X%f Z%f R%f" % (p1[0], p1[2], radius)) #G3
                 conv.g.write("G3 X%f Z%f I%f K%f" % (p1[0], p1[2], I, K))
@@ -3750,11 +3438,11 @@ class Image_Matrix:
     def minus(self,val):
         self.matrix = self.matrix - float(val)
 
-################################################################################
-#             Function for outputting messages to different locations          #
-#            depending on what options are enabled                             #
-################################################################################
 def fmessage(text,newline=True):
+    """\
+    Function for outputting messages to different locations
+    depending on what options are enabled
+    """
     global QUIET
     if not QUIET:
         if newline==True:
@@ -3783,9 +3471,7 @@ def message_ask_ok_cancel(title, mess):
         result=tkMessageBox.askokcancel(title, mess)
     return result
 
-################################################################################
-#                          Startup Application                                 #
-################################################################################
+#   Startup Application
 
 root = Tk()
 app = Application(root)
